@@ -1,3 +1,4 @@
+from tempfile import TemporaryFile
 import discord
 import json
 import api
@@ -6,6 +7,8 @@ import time
 import random
 import typing
 from discord.ext import commands
+
+rift_icon = 'https://cdn.discordapp.com/avatars/699752709028446259/df9496def162ef55bcaa9a2005c75ab2.png?size=256'
 
 #Classes
 class Player():
@@ -50,6 +53,13 @@ class Player():
             beforeArgs = "-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5"
             vc.play(discord.FFmpegPCMAudio(source=api.streamSong(song.id).url,  before_options=beforeArgs), after=toggleNext)
 
+def constrain(val, min, max):
+    if val < min:
+        return min
+    if val > max:
+        return max
+    return val
+
 #Queue & Event
 songs = asyncio.Queue()
 playNext = asyncio.Event()
@@ -58,7 +68,8 @@ playNext = asyncio.Event()
 serverQueue = []
 
 #Assign client to commands bot
-client = commands.Bot(command_prefix='s!')
+#TODO: Move this to slash commands
+client = commands.Bot(command_prefix='lf!')
 
 #Retrieve data from json file
 with open("subrift.json", "r") as read_file:
@@ -268,28 +279,93 @@ async def search(ctx, *, query):
         await ctx.send(embed=embed)
 
 #Check Queue
+# Note: Based heavily on:
+#  https://stackoverflow.com/questions/55075157/discord-rich-embed-buttons
 @client.command()
 async def queue(ctx):
+    pages = []
+    total = 0
+
     #Embed Message
-    embed = discord.Embed(
-        title = 'Queue',
-        color = discord.Color.orange()
-    )
-    embed.set_footer(text=api.url)
-    embed.set_author(name='SubRift')
-    embed.set_thumbnail(url='https://cdn.discordapp.com/avatars/699752709028446259/df9496def162ef55bcaa9a2005c75ab2.png?size=256')
+    def new_embed():
+        e = discord.Embed(
+            color     = discord.Color.orange(),
+            footer    = api.url,
+            author    = '<@SleepyAli#3611>'
+            thumbnail = rift_icon
+        )
+        pages.append(e)
+        total = total + 1
+        return e
+
+    embed = new_embed()
 
     #Add Field for every song
-    count = 1
+    count = 0
     for song in serverQueue:
-        embed.add_field(
-            name=count,
-            value='{0} - {1}'.format(song.title, song.artist),
-            inline=False
-        )
         count = count + 1
+        embed.add_field(
+            name   = count,
+            value  = f"{song.title} - {song.artist}",
+            inline = False
+        )
 
-    await ctx.send(embed=embed)
+        # Split into new embed every 100 entries
+        if count-1 >= 100 / total and not count >= len(serverQueue):
+            embed = new_embed()
+
+
+    #If theres only one page, just send it and return
+    if total == 1:
+        pages[0].set_title("Queue")
+        return await ctx.send(embed=pages[0])
+
+    for i in range(total):
+        pages[i].set_title(f"Queue ({i + 1} of {total})")
+
+    first_react = '⏮'
+    prev_react = '◀'
+    next_react = '▶'
+    last_react = '⏭'
+
+    message = await ctx.send(embed=embed)
+    await message.add_reaction(first_react)
+    await message.add_reaction(prev_react)
+    await message.add_reaction(next_react)
+    await message.add_reaction(last_react)
+
+    def check(reaction, user):
+        return user == ctx.author
+
+    at_page = 0
+    timeout = float(30)
+    reaction = None
+
+    while True:
+        if str(reaction) == first_react:
+            at_page = 0
+            await message.edit(embed = pages[at_page])
+        elif str(reaction) == prev_react:
+            at_page = constrain(at_page - 1, 0, total - 1)
+            await message.edit(embed = pages[at_page])
+        elif str(reaction) == next_react:
+            at_page = constrain(at_page + 1, 0, total - 1)
+            await message.edit(embed = pages[at_page])
+        elif str(reaction) == last_react:
+            at_page = constrain(total, 0, total - 1)
+            await message.edit(embed = pages[at_page])
+
+        try:
+            reaction, user = await client.wait_for('reaction_add',
+                timeout = timeout,
+                check   = check,
+            )
+            await message.remove_reaction(reaction, user)
+        except:
+            break
+
+    await message.clear_reactions()
+
 
 #Post download link to song
 @client.command()
