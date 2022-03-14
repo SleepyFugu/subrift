@@ -1,14 +1,16 @@
-from tempfile import TemporaryFile
 import discord
 import json
 import api
 import asyncio
-import time
 import random
 import typing
 from discord.ext import commands
 
-rift_icon = 'https://cdn.discordapp.com/avatars/699752709028446259/df9496def162ef55bcaa9a2005c75ab2.png?size=256'
+rift_icon  = 'https://cdn.discordapp.com/avatars/699752709028446259/df9496def162ef55bcaa9a2005c75ab2.png?size=256'
+songs      = asyncio.Queue()
+playNext   = asyncio.Event()
+printQueue = []
+loglevels  = ["INFO ", "WARN ", "ERROR"]
 
 #Classes
 class Player():
@@ -25,33 +27,33 @@ class Player():
 
         #Check if bot was disconnected.
         if not client.voice_clients:
-            #TO DO Clear Queue
-            print("I can't feel my legs")
-            clearQueue()
+            await logInfo("Bot was disconnected, clearing queue")
+            clearQueue(printQueue)
             client.loop.call_soon_threadsafe(playNext.set)
+            return
 
-        #Otherwise, Play those BEATS
-        else:
-            #Embed Message
-            embed = discord.Embed(
-                title = 'Playing {0} by {1}'.format(song.title, song.artist),
-                color = discord.Color.orange(),
-                description = '[Download]({0})'.format(api.streamSong(song.id).url)
-            )
-            embed.set_author(name='SubRift')
-            embed.set_footer(text=api.url)
-            embed.set_thumbnail(url='https://cdn.discordapp.com/avatars/699752709028446259/df9496def162ef55bcaa9a2005c75ab2.png?size=256')
+        embed = discord.Embed(
+            title = 'Playing {0} by {1}'.format(song.title, song.artist),
+            color = discord.Color.orange(),
+            description = '[Download]({0})'.format(api.streamSong(song.id).url)
+        )
+        embed.set_author(name='SubRift')
+        embed.set_footer(text=api.url)
+        embed.set_thumbnail(rift_icon)
 
-            #Check cover art
-            if song.coverArt != '':
-                embed.set_image(url=api.getCoverArt(song.coverArt).url)
+        #Check cover art
+        if song.coverArt != '':
+            embed.set_image(url=api.getCoverArt(song.coverArt).url)
 
-            await ctx.send(embed=embed)
+        await ctx.send(embed=embed)
 
-            #Play
-            serverQueue.pop(0)
-            beforeArgs = "-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5"
-            vc.play(discord.FFmpegPCMAudio(source=api.streamSong(song.id).url,  before_options=beforeArgs), after=toggleNext)
+        printQueue.pop(0)
+        beforeArgs = "-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5"
+        vc.play(discord.FFmpegPCMAudio(
+                    source = api.streamSong(song.id).url,
+                    before_options = beforeArgs),
+                    after = toggleNext
+        )
 
 def constrain(val, min, max):
     if val < min:
@@ -60,37 +62,77 @@ def constrain(val, min, max):
         return max
     return val
 
-#Queue & Event
-songs = asyncio.Queue()
-playNext = asyncio.Event()
 
-#Queue List (For Printing)
-serverQueue = []
+def levelToString(level: int):
+    return loglevels[constrain(level, 0, len(loglevels)-1)]
 
-#Assign client to commands bot
-#TODO: Move this to slash commands
-client = commands.Bot(command_prefix='lf!')
+async def logInfo(msg):
+    print(f"{levelToString(0)} | {msg}")
 
-#Retrieve data from json file
-with open("subrift.json", "r") as read_file:
-    data = json.load(read_file)
+async def logWarning(msg):
+    print(f"{levelToString(1)} | {msg}")
 
-TOKEN = data["DISCORDTOKEN"]
+async def logError(msg):
+    print(f"{levelToString(2)} | {msg}")
 
-#Logs Bot in
-@client.event
-async def on_ready():
-    print('Logged in as {0.user}' .format(client))
+def logFatal(msg):
+    print(f"{levelToString(3)} | {msg}")
+    exit(1)
 
-#Ping bot
-@client.command()
-async def ping(ctx):
-    if ctx.author == client.user:
-        return
 
-    await ctx.channel.send('Pong!')
+async def ignore_self(fn):
+    async def wrapped(*args, **kwargs):
+        if ctx.author == client.user:
+            return
+        return fn(*args, **kwargs)
+    return wrapped
 
-#Audio Player
+
+#Clear Queue
+def clearQueue(queue):
+    if queue is List:
+        queue.clear()
+    for _ in range(songs.qsize()):
+        songs.get_nowait()
+        songs.task_done()
+
+
+async def require_vc(fn):
+    async def wrapped(*args, **kwargs):
+        ctx = args[0]
+
+        if ctx is None:
+            print("Invalid context, cannot be None")
+            return
+
+        if ctx.author.voice is None:
+            await ctx.send("You need to join a voice channel first.")
+            return
+
+        if not client.voice_clients:
+            await (ctx.author.voice.channel).connect()
+
+        return fn(*args, **kwargs)
+    return wrapped
+
+
+async def require_queue(fn):
+    async def wrapped(*args, **kwargs):
+        ctx = args[0]
+
+        if ctx is None:
+            print("Invalid context, cannot be None")
+            return
+
+        #Check Queue is not empty
+        if len(printQueue) == 0:
+            await ctx.send("Queue is empty")
+            return
+
+        return fn(*args, **kwargs)
+    return wrapped
+
+
 async def audioPlayer():
     while True:
         #Clear flag and get from queue
@@ -99,190 +141,190 @@ async def audioPlayer():
         await player.start()
         await playNext.wait()
 
+
+#Retrieve data from json file
+with open("subrift.json", "r") as read_file:
+    data = json.load(read_file)
+
+client = commands.Bot(command_prefix=data["PREFIX"] or 's!')
+
+@client.event
+async def on_ready():
+    print(f"Logged in as {client.user}")
+
+
+@client.command()
+@ignore_self(fn)
+async def ping(ctx):
+    """Test bot with a ping
+    """
+    if ctx.author == client.user:
+        return
+    await ctx.channel.send('Pong~!')
+
+
+@client.command()
+@commands.is_owner()
+async def quit(ctx):
+    """Logout of Discord, and exit the bot process
+    """
+    await ctx.send("This is so sad...")
+    await ctx.bot.logout()
+    exit(0)
+
+
 #Toggles next song
 def toggleNext(self):
     client.loop.call_soon_threadsafe(playNext.set)
 
+
 #Next Song
 @client.command()
-async def skip(ctx):
-    #In Voice?
-    if client.voice_clients is not None:
-        #Playing Music?
-        if client.voice_clients[0].is_playing():
-            #Queue Empty?
-            if songs.qsize() == 0:
-                await ctx.send('Queue is empty')
-            #Stop and play next song
-            else:
-                client.voice_clients[0].stop()
-        else:
-            await ctx.send('Nothing Playing')
+@require_vc(fn)
+@require_queue(fn)
+@ignore_self(fn)
+async def skip():
+    vc = client.voice_clients[0]
+    if vc.is_playing():
+        vc.stop()
+
 
 #Play Song Discord Command
 @client.command()
-async def play(ctx, option: typing.Optional[int] = None, *, query):
-    #Check if author is NOT in voice chat
-    if ctx.author.voice is None:
-        await ctx.send("You need to join a voice channel first.")
+@require_vc(fn)
+@ignore_self(fn)
+async def play(ctx, *, query):
+    vc = client.voice_clients[0]
+    song = api.getSong(query)
+
+    if song is None:
+        await ctx.send("Cannot locate song")
         return
 
-    else:
-        #Join channel if not already in one
-        if not client.voice_clients:
-            channel = ctx.author.voice.channel
-            vc = await channel.connect()
-        else:
-            vc = client.voice_clients[0]
-
-        #Check if player should add to queue or play immediately
-        if vc.is_playing() == True:
-            #Play Now
-            if option == 1:
-                vc.stop()
-                clearQueue()
-                serverQueue.clear()
-
-        #Add to Queue & Play Song
-        song = api.getSong(query)
-        if song is not None:
-            serverQueue.append(song)
-            await ctx.send('Added to Queue')
-            await playSong(ctx, vc, song)
-        else:
-            await ctx.send("Song Doesn't Exist")
+    printQueue.append(song)
+    await ctx.send('Added to Queue')
+    await playSong(ctx, vc, song)
 
 #Play Song
 async def playSong(ctx, vc, song):
-    if song is not None:
-        #Create Player & Place in queue
-        player = Player(ctx, vc, song)
-        await songs.put(player)
-    else:
-        await ctx.send("Does not exist")
-
-@play.error
-async def play_error(ctx, error):
-    if isinstance(error, commands.MissingRequiredArgument):
-        await ctx.send('Try `play [song-title]`')
-
-@client.command()
-async def playalbum(ctx, option: typing.Optional[int] = None, *, query):
-    #Check if author is NOT in voice chat
-    if ctx.author.voice is None:
-        await ctx.send("You need to join a voice channel first.")
+    if song is None:
         return
 
-    else:
-        #Join channel if not already in one
-        if not client.voice_clients:
-            vc = await (ctx.author.voice.channel).connect()
-        else:
-            vc = client.voice_clients[0]
+    player = Player(ctx, vc, song)
+    await songs.put(player)
 
-        #Stop Current Song & Clear Queue
-        if vc.is_playing() == True:
-            vc.stop()
-            clearQueue()
-            serverQueue.clear()
+@client.command()
+@require_vc(fn)
+@ignore_self(fn)
+async def playalbum(ctx, option: typing.Optional[int] = None, *, query):
+    """
+    """
+    vc = client.voice_clients[0]
 
-        #Get Playlist Info
-        album = api.getAlbumData(api.getAlbum(query).id)
+    album = api.getAlbumData(api.getAlbum(query).id)
 
-        #Check if Empty
-        if album is not None:
+    if album is None:
+        await ctx.send('Album Not Found. Enter Exact Name')
+        return
 
-            #Shuffle if -s Given
-            if option == 1:
-                random.shuffle(playlist)
+    if vc.is_playing() == True:
+        vc.stop()
 
-            #Populate Songs Queue
-            for entry in album:
-                await playSong(ctx, vc, entry)
+    clearQueue(printQueue)
 
-            #Place all but current in Queue
-            album.pop(0)
-            for entry in album:
-                serverQueue.append(entry)
-        else:
-            await ctx.send('Album Not Found. Enter Exact Name')
+    #Shuffle if -s Given
+    if option == 1:
+        random.shuffle(album)
+
+    await playSong(ctx, vc, album.pop(0))
+
+    for entry in album:
+        printQueue.append(entry)
+        await playSong(ctx, vc, entry)
+
+
 
 #Stop Song
 @client.command()
-async def stop(ctx):\
-    #Check if Bot is in Voice
-    if client.voice_clients:
-        vc = client.voice_clients[0]
-        #Check if Music is Playing
-        if vc.is_playing() == True:
-            vc.stop()
-            clearQueue()
-            serverQueue.clear()
-            await vc.disconnect()
-        else:
-            await ctx.channel.send('Nothing is playing')
+@require_vc(fn)
+@ignore_self(fn)
+async def stop(ctx):
+    """Stop the currently playing song and clear the queue
+    """
+    vc = client.voice_clients[0]
+    if vc.is_playing() == True:
+        vc.stop()
+        clearQueue(printQueue)
+        await vc.disconnect()
     else:
-        await ctx.channel.send('Plug me in')
+        await ctx.channel.send('Nothing is playing')
+
 
 #Pause Song
 @client.command()
+@require_queue(fn)
+@require_vc(fn)
+@ignore_self(fn)
 async def pause(ctx):
-    if client.voice_clients:
-        vc = client.voice_clients[0]
-        if vc.is_playing() == True:
-            vc.pause()
-        else:
-            await ctx.channel.send('Nothing is playing')
+    """Pause the currently playing song
+    """
+    vc = client.voice_clients[0]
+    if vc.is_playing() == True:
+        vc.pause()
     else:
-        await ctx.channel.send('Plug me in')
+        await ctx.channel.send('Nothing is playing')
 
-#Resume Song
 @client.command()
+@require_queue(fn)
+@require_vc(fn)
+@ignore_self(fn)
 async def resume(ctx):
-    if client.voice_clients:
-        vc = client.voice_clients[0]
-        if vc.is_playing() == False:
-            vc.resume()
-        else:
-            await ctx.channel.send('Song is already playing')
+    """Resumes a paused song
+    """
+    vc = client.voice_clients[0]
+    if vc.is_playing() == False:
+        vc.resume()
     else:
-        await ctx.channel.send('Plug me in')
+        await ctx.channel.send('Song is already playing')
 
-#Search Server
+
 @client.command()
+@ignore_self(fn)
 async def search(ctx, *, query):
-    #Check bot didn't say nuthin
+    """Search for a particular string on the Subsonic server
+    """
     if ctx.author == client.user:
         return
-    #Display Search Results
-    else:
-        #Get Search Results
-        songInfoList = api.getSearchResults(query)
 
-        #Embed Message
-        embed = discord.Embed(
-            title = 'Search Results',
-            color = discord.Color.orange()
+    songInfoList = api.getSearchResults(query)
+
+    #Embed Message
+    embed = discord.Embed(
+        title = 'Search Results',
+        color = discord.Color.orange()
+    )
+    embed.set_footer(text=api.url)
+    embed.set_author(name='SubRift')
+    embed.set_thumbnail(rift_icon)
+
+    #Add Field for every song
+    for song in songInfoList:
+        embed.add_field(
+            name=str(song.id),
+            value=f"{song.title} - {song.artist}",
+            inline=False
         )
-        embed.set_footer(text=api.url)
-        embed.set_author(name='SubRift')
-        embed.set_thumbnail(url='https://cdn.discordapp.com/avatars/699752709028446259/df9496def162ef55bcaa9a2005c75ab2.png?size=256')
 
-        #Add Field for every song
-        for song in songInfoList:
-            embed.add_field(
-                name=str(song.id),
-                value='{0} - {1}'.format(song.title, song.artist),
-                inline=False
-            )
+    await ctx.send(embed=embed)
 
-        await ctx.send(embed=embed)
 
 #Check Queue
 # Note: Based heavily on:
 #  https://stackoverflow.com/questions/55075157/discord-rich-embed-buttons
 @client.command()
 async def queue(ctx):
+    """List the current queue
+    """
     pages = []
     total = 0
 
@@ -302,7 +344,7 @@ async def queue(ctx):
 
     #Add Field for every song
     count = 0
-    for song in serverQueue:
+    for song in printQueue:
         count = count + 1
         embed.add_field(
             name   = count,
@@ -311,9 +353,8 @@ async def queue(ctx):
         )
 
         # Split into new embed every 100 entries
-        if count-1 >= 100 / total and not count >= len(serverQueue):
+        if count-1 >= 100 / total and not count >= len(printQueue):
             embed = new_embed()
-
 
     #If theres only one page, just send it and return
     if total == 1:
@@ -367,102 +408,57 @@ async def queue(ctx):
     await message.clear_reactions()
 
 
-#Post download link to song
 @client.command()
-async def download(ctx, *, query):
-    #Get Song Info
-    song = api.getSong(query)
-
-    if song is not None:
-        #Create Player & Place in queues
-        await ctx.send(api.streamSong(song.id).url)
-    else:
-        await ctx.send("Song does not exist")
-
-#Post download link to song
-@client.command()
-@commands.is_owner()
-async def restart(ctx):
-    await ctx.send("This is so sad...")
-    await ctx.bot.logout()
-
-#Play Playlist
-@client.command()
+@require_vc(fn)
+@ignore_self(fn)
 async def playlist(ctx, option: typing.Optional[int] = None, *, query):
-    #Check if author is NOT in voice chat
-    if ctx.author.voice is None:
-        await ctx.send("You need to join a voice channel first.")
+    """Query for a given playlist, and play it (resets the queue)
+    """
+    playlist = api.getPlaylist(query)
+    if playlist is None:
+        await ctx.send('Failed to locate playlist, please enter the exact name')
         return
 
-    else:
-        #Join channel if not already in one
-        if not client.voice_clients:
-            vc = await (ctx.author.voice.channel).connect()
-        else:
-            vc = client.voice_clients[0]
+    vc = client.voice_clients[0]
+    if vc.is_playing() == True:
+        vc.stop()
 
-        #Stop Current Song & Clear Queue
-        if vc.is_playing() == True:
-            vc.stop()
-            clearQueue()
-            serverQueue.clear()
+    clearQueue(printQueue)
 
-        #Get Playlist Info
-        playlist = api.getPlaylist(query)
+    #Shuffle if -s Given
+    # TODO: This doesn't seem to be working, will need to look into why
+    if option == 1:
+        random.shuffle(playlist)
 
-        #Check if Empty
-        if playlist is not None:
+    await playSong(playlist.pop(0))
 
-            #Shuffle if -s Given
-            if option == 1:
-                random.shuffle(playlist)
+    for entry in playlist:
+        await playSong(ctx, vc, entry)
+        printQueue.append(entry)
 
-            #Populate Songs Queue
-            for entry in playlist:
-                await playSong(ctx, vc, entry)
 
-            #Place all but current in Queue
-            playlist.pop(0)
-            for entry in playlist:
-                serverQueue.append(entry)
-        else:
-            await ctx.send('Playlist Not Found. Enter Exact Name')
-
-#Shuffle Queue
 @client.command()
+@require_vc(fn)
+@require_queue(fn)
+@ignore_self(fn)
 async def shuffle(ctx):
-    #Check if author is NOT in voice chat
-    if ctx.author.voice is None:
-        await ctx.send("You need to join a voice channel first.")
-        return
+    """Shuffles the currently active song queue"""
+    clearQueue()
+    random.shuffle(printQueue)
+    for entry in printQueue:
+        await playSong(ctx, vc, entry)
 
-    else:
-        #Check Queue is not empty
-        if len(serverQueue) == 0:
-            await ctx.send("Queue is empty")
 
-        else:
-            #Shuffle Service Queue
-            random.shuffle(serverQueue)
+####################
+## Command Errors ##
+####################
+@play.error
+async def play_error(ctx, error):
+    if isinstance(error, commands.MissingRequiredArgument):
+        await ctx.send('Try `play [song-title]`')
 
-            #Join channel if not already in one
-            if not client.voice_clients:
-                vc = await (ctx.author.voice.channel).connect()
-            else:
-                vc = client.voice_clients[0]
 
-            #Clear Current Queue
-            clearQueue()
-
-            #Populate Queue
-            for entry in serverQueue:
-                await playSong(ctx, vc, entry)
-
-#Clear Queue
-def clearQueue():
-    for _ in range(songs.qsize()):
-        songs.get_nowait()
-        songs.task_done()
-
-client.loop.create_task(audioPlayer())
-client.run(TOKEN)
+if __name__ == '__main__':
+    TOKEN = data["DISCORDTOKEN"]
+    client.loop.create_task(audioPlayer())
+    client.run(TOKEN)
