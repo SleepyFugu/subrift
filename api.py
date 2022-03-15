@@ -97,7 +97,7 @@ def makeRawRequest(endpoint:str, params=None, stream=False) -> requests.Response
     }
 
     if isinstance(params, dict):
-        for k, v in range(params):
+        for k, v in params.items():
             req_params[k] = v
 
     r = requests.get(
