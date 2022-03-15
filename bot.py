@@ -182,7 +182,7 @@ def toggleNext(self):
 @commands.check(require_queue)
 @commands.check(log_command)
 @commands.check(ignore_self)
-async def skip():
+async def skip(ctx):
     vc = client.voice_clients[0]
     if vc.is_playing():
         vc.stop()
