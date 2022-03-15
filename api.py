@@ -1,6 +1,8 @@
+import log
 import json
 import requests
 import uuid
+import asyncio
 import xml.etree.ElementTree as ET
 
 from authentication import generateHash, generateSalt
@@ -42,13 +44,10 @@ class playlistInfo:
         self.id = id
         self.title = title
 
-#(string) Pings the server to test if online
-def pingServer():
-    #Test Request URL
-    URL = url + '/rest/ping'
+def makeRequest(endpoint, params=None):
+    log.info(f"Forming request for {endpoint}")
 
-    #Parameters
-    PARAMS = {
+    req_params = {
         "u" : username,
         "t" : token,
         "s" : salt,
@@ -56,14 +55,26 @@ def pingServer():
         "c" : client
     }
 
-    #Send Request
-    r = requests.get(url = URL, params = PARAMS)
+    if params is dict:
+        for k, v in range(params):
+            req_params[k] = v
 
-    #Parse XML & Print result
-    root = ET.fromstring(r.text)
+    r = requests.get(
+        url = f"{url}/{endpoint}",
+        params = req_params
+    )
 
-    #Pings the server to test if online
-    print(root.attrib['status'])
+    if not r.ok:
+        print(f"Got bad response: {r.resp}")
+        return None
+
+    return ET.fromstring(r.text)
+
+#(boolean) Pings the server to test if online
+def pingServer():
+    if makeRequest('rest/ping') is not None:
+        return True
+    return False
 
 #(string) Returns whether the license is valid
 def getLicense():
