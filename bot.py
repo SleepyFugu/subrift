@@ -149,6 +149,17 @@ async def ping(ctx):
 
 @client.command()
 @commands.is_owner()
+async def toggleDebug(ctx):
+    if log.debugEnabled():
+        log.disableDebug()
+        await ctx.send("Disabled debug logging")
+        return
+    log.enableDebug()
+    await ctx.send("Enabled debug logging")
+
+
+@client.command()
+@commands.is_owner()
 async def quit(ctx):
     """Logout of Discord, and exit the bot process
     """
