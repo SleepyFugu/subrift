@@ -516,6 +516,7 @@ async def shuffle(ctx):
     vc = client.voice_clients[0]
     for entry in printQueue:
         await playSong(ctx, vc, entry)
+    await ctx.send("Shuffled queue!")
 
 
 ####################

@@ -50,7 +50,7 @@ class playlistInfo:
 
 def makeXMLRequest(endpoint:str, params=None) -> ET.Element:
     endpoint = endpoint.lstrip("/")
-    log.debug(f"Requesting {url}/{endpoint} ...")
+    log.debug(f"Requesting {url}/{endpoint} w/ params={params} ...")
 
     req_params = {
         "u" : username,
@@ -86,7 +86,7 @@ def makeRawRequest(endpoint:str, params=None, stream=False) -> requests.Response
     """Make an http request to the Subsonic server and return the raw response object
     """
     endpoint = endpoint.lstrip("/")
-    log.debug(f"Requesting {url}/{endpoint} ...")
+    log.debug(f"Requesting {url}/{endpoint} w/ params={params} ...")
 
     req_params = {
         "u" : username,
