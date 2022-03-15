@@ -49,7 +49,7 @@ class playlistInfo:
         self.comment = comment
 
 def makeXMLRequest(endpoint:str, params=None) -> ET.Element:
-    endpoint = endpoint.removeprefix("/")
+    endpoint = endpoint.lstrip("/")
     log.debug(f"Requesting {url}/{endpoint} ...")
 
     req_params = {
@@ -85,7 +85,7 @@ def makeXMLRequest(endpoint:str, params=None) -> ET.Element:
 def makeRawRequest(endpoint:str, params=None, stream=False) -> requests.Response:
     """Make an http request to the Subsonic server and return the raw response object
     """
-    endpoint = endpoint.removeprefix("/")
+    endpoint = endpoint.lstrip("/")
     log.debug(f"Requesting {url}/{endpoint} ...")
 
     req_params = {
@@ -292,7 +292,7 @@ def getSearchResults(query):
 
     return songInfoList
 
-def getAlbumData(id) -> list[songInfo]:
+def getAlbumData(id) -> list:
     """Return song data for an album
 
     Returns
@@ -333,7 +333,7 @@ def getAlbumData(id) -> list[songInfo]:
 
 
 #(binary) Returns a listing of files in a saved playlist.
-def getPlaylistData(id:str) -> list[songInfo]:
+def getPlaylistData(id:str) -> list:
     """Return song data for a playlist
 
     Returns
@@ -378,7 +378,7 @@ def getPlaylistData(id:str) -> list[songInfo]:
 
 
 #(playlistInfo) Returns list of playlist
-def getPlaylist(query) -> list[songInfo]:
+def getPlaylist(query) -> list:
     """Get a single playlist
 
     returns
@@ -395,7 +395,7 @@ def getPlaylist(query) -> list[songInfo]:
 
     return None
 
-def getPlaylists() -> list[playlistInfo]:
+def getPlaylists() -> list:
     """Get all of the playlists the api has access to
 
     returns
