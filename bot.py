@@ -13,6 +13,8 @@ songs      = asyncio.Queue()
 playNext   = asyncio.Event()
 printQueue = []
 
+log.enableDebug()
+
 #Classes
 class Player():
     def __init__(self, ctx, vc, song):
@@ -59,7 +61,7 @@ class Player():
 
 #Clear Queue
 def clearQueue(queue=None):
-    if queue is list:
+    if isinstance(queue, list):
         queue.clear()
     for _ in range(songs.qsize()):
         songs.get_nowait()
@@ -434,6 +436,42 @@ async def queue(ctx):
 
     await message.clear_reactions()
 
+@client.command()
+@commands.check(ignore_self)
+async def playlists(ctx):
+    """Query the list of available playlists
+    """
+    playlists = api.getPlaylists()
+
+    embed = discord.Embed(
+        title = "Playlists Available",
+        color = discord.Color.orange(),
+    )
+
+    embed.set_footer(text=api.url)
+    embed.set_thumbnail(url=rift_icon)
+
+    if len(playlists) < 1:
+        embed.description = "No available playlists"
+
+    else:
+        i = 0
+        for playlist in playlists:
+            i = i + 1
+            value = f"_Songs: {playlist.count}\nOwner: {playlist.owner}"
+            if not playlist.comment is None:
+                value = f"{value}\n{playlist.comment}"
+
+            value = f"{value}_"
+
+            embed.add_field(
+                name = f"{i}: {playlist.title}",
+                value = value,
+                inline = False
+            )
+
+    await ctx.send(embed=embed)
+
 
 @client.command()
 @commands.check(require_vc)
@@ -442,7 +480,7 @@ async def playlist(ctx, option: typing.Optional[int] = None, *, query):
     """Query for a given playlist, and play it (resets the queue)
     """
     playlist = api.getPlaylist(query)
-    if playlist is None:
+    if playlist is None or len(playlist) < 1:
         await ctx.send('Failed to locate playlist, please enter the exact name')
         return
 
