@@ -13,8 +13,6 @@ songs      = asyncio.Queue()
 playNext   = asyncio.Event()
 printQueue = []
 
-log.enableDebug()
-
 #Retrieve data from json file
 with open("subrift.json", "r") as read_file:
     data = json.load(read_file)
