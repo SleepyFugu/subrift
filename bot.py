@@ -15,6 +15,10 @@ printQueue = []
 
 log.enableDebug()
 
+#Retrieve data from json file
+with open("subrift.json", "r") as read_file:
+    data = json.load(read_file)
+
 #Classes
 class Player():
     def __init__(self, ctx, vc, song):
@@ -35,20 +39,24 @@ class Player():
             client.loop.call_soon_threadsafe(playNext.set)
             return
 
-        embed = discord.Embed(
-            title = 'Playing {0} by {1}'.format(song.title, song.artist),
-            color = discord.Color.orange(),
-            description = '[Download]({0})'.format(api.streamSong(song.id).url)
-        )
-        embed.set_author(name='SubRift')
-        embed.set_footer(text=api.url)
-        embed.set_thumbnail(url=rift_icon)
+        try:
+            if data["EMBED_ON_PLAY"]:
+                embed = discord.Embed(
+                    title = 'Playing {0} by {1}'.format(song.title, song.artist),
+                    color = discord.Color.orange(),
+                    description = '[Download]({0})'.format(api.streamSong(song.id).url)
+                )
+                embed.set_author(name='SubRift')
+                embed.set_footer(text=api.url)
+                embed.set_thumbnail(url=rift_icon)
 
-        #Check cover art
-        if song.coverArt != '':
-            embed.set_image(url=api.getCoverArt(song.coverArt).url)
+                #Check cover art
+                if song.coverArt != '':
+                    embed.set_image(url=api.getCoverArt(song.coverArt).url)
 
-        await ctx.send(embed=embed)
+                await ctx.send(embed=embed)
+        except:
+            pass
 
         printQueue.pop(0)
         beforeArgs = "-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5"
@@ -124,11 +132,6 @@ async def playSong(ctx, vc, song):
 
     player = Player(ctx, vc, song)
     await songs.put(player)
-
-
-#Retrieve data from json file
-with open("subrift.json", "r") as read_file:
-    data = json.load(read_file)
 
 client = commands.Bot(command_prefix=data["PREFIX"] or 's!')
 
