@@ -4,6 +4,7 @@ import requests
 import uuid
 import asyncio
 import xml.etree.ElementTree as ET
+import distutils
 
 from authentication import generateHash, generateSalt
 
@@ -20,7 +21,7 @@ salt = generateSalt()
 token = generateHash(password, salt)
 client = 'Subrift'
 
-#Namespaces
+#XML Namespaces
 ns = {'sub' : 'http://subsonic.org/restapi'}
 
 #Classes
@@ -40,84 +41,107 @@ class albumInfo:
         self.coverArt = coverArt
 
 class playlistInfo:
-    def __init__(self, id, title):
+    def __init__(self, id, title, count, owner, comment):
         self.id = id
         self.title = title
+        self.count = count
+        self.owner = owner
+        self.comment = comment
 
-def makeRequest(endpoint, params=None):
-    log.info(f"Forming request for {endpoint}")
+def makeXMLRequest(endpoint:str, params=None) -> ET.Element:
+    endpoint = endpoint.removeprefix("/")
+    log.debug(f"Requesting {url}/{endpoint} ...")
 
     req_params = {
         "u" : username,
         "t" : token,
         "s" : salt,
-        "v" : '1.15.0',
+        "v" : '1.16.0',
         "c" : client
     }
 
-    if params is dict:
+    if isinstance(params, dict):
+        for k, v in params.items():
+            req_params[k] = v
+
+    r = requests.get(
+        url = f"{url}/{endpoint}",
+        params = req_params,
+    )
+
+    element = ET.fromstring(r.text)
+    if not r.ok :
+        log.warning(f"Got {r.status_code}, an invalid response: {r.reason}")
+        return None
+
+    if not element.attrib['status'] == "ok":
+        err = element.find('sub:error', namespaces=ns)
+        log.warning(f"XML request failed with code {err.attrib['code']}: {err.attrib['message']}")
+        return None
+
+    return element
+
+
+def makeRawRequest(endpoint:str, params=None, stream=False) -> requests.Response:
+    """Make an http request to the Subsonic server and return the raw response object
+    """
+    endpoint = endpoint.removeprefix("/")
+    log.debug(f"Requesting {url}/{endpoint} ...")
+
+    req_params = {
+        "u" : username,
+        "t" : token,
+        "s" : salt,
+        "v" : '1.16.0',
+        "c" : client
+    }
+
+    if isinstance(params, dict):
         for k, v in range(params):
             req_params[k] = v
 
     r = requests.get(
         url = f"{url}/{endpoint}",
-        params = req_params
+        params = req_params,
+        stream = stream
     )
 
     if not r.ok:
-        print(f"Got bad response: {r.resp}")
+        log.error(f"Received {r.status_code} from {url}/{endpoint}: {r.reason}")
         return None
 
-    return ET.fromstring(r.text)
+    return r
 
-#(boolean) Pings the server to test if online
+
 def pingServer():
-    if makeRequest('rest/ping') is not None:
+    """Return the current online status of the Subsonic server
+
+    Returns
+    -------
+    bool: Online status
+    """
+    if makeXMLRequest('/rest/ping') is not None:
         return True
     return False
 
-#(string) Returns whether the license is valid
-def getLicense():
-    #Test Request URL
-    URL = url + '/rest/getLicense'
+def getLicense() -> bool:
+    """Return the current state of the Subsonic license
 
-    #Parameters
-    PARAMS = {
-        "u" : username,
-        "t" : token,
-        "s" : salt,
-        "v" : '1.15.0',
-        "c" : client
-    }
-
-    #Send Request
-    r = requests.get(url = URL, params = PARAMS)
-
-    #Parse XML & Print result
-    root = ET.fromstring(r.text)
-    print('License Valid: ' + root[0].attrib['valid'])
+    Returns
+    -------
+    bool: License status
+    """
+    root = makeXMLRequest('/rest/getLicense')
+    return distutils.util.strtobool(root[0].attrib['valid'])
 
 #(xml) Returns xml object containing music folders
-def getMusicFolders():
-    #Test Request URL
-    URL = url + '/rest/getMusicFolders'
-
-    #Parameters
-    PARAMS = {
-        "u" : username,
-        "t" : token,
-        "s" : salt,
-        "v" : '1.15.0',
-        "c" : client
-    }
-
-    #Send Request
-    return requests.get(url = URL, params = PARAMS)
+def getMusicFolders() -> ET.Element:
+    return makeXMLRequest('/rest/getMusic/Folders')
 
 #Prints music folders
 def printMusicFolders():
     #Parse XML
-    root = ET.fromstring(getMusicFolders().text)
+    root = getMusicFolders()
 
     #Print Name & ID of each music folder
     for musicFolders in root.findall("sub:musicFolders", namespaces=ns):
@@ -128,97 +152,45 @@ def printMusicFolders():
 
 #(xml) Returns xml object containing indexes
 def getIndexes():
-    #Test Request URL
-    URL = url + '/rest/getIndexes'
+    return makeXMLRequest('/rest/getIndexes')
 
-    #Parameters
-    PARAMS = {
-        "u" : username,
-        "t" : token,
-        "s" : salt,
-        "v" : '1.15.0',
-        "c" : client
-    }
-
-    #Send Request
-    return requests.get(url = URL, params = PARAMS)
-
-#(xml) Returns xml object containing music directory when given id
 def getMusicDirectory(id):
-    #Test Request URL
-    URL = url + '/rest/getMusicDirectory'
+    """Returns xml object containing music directory when given id
+    """
+    return makeXMLRequest('/rest/getMusicDirectory', {"id": id})
 
-    #Parameters
-    PARAMS = {
-        "u" : username,
-        "t" : token,
-        "s" : salt,
-        "v" : '1.15.0',
-        "c" : client,
-        "id": id
-    }
+def search2(query) -> ET.Element:
+    """Run a subsonic search2 query
 
-    #Send Request
-    return requests.get(url = URL, params = PARAMS)
-
-#(xml) Returns xml object containing search results
-def search(query):
-    #Test Request URL
-    URL = url + '/rest/search3'
-
-    #Parameters
-    PARAMS = {
-        "u" : username,
-        "t" : token,
-        "s" : salt,
-        "v" : '1.15.0',
-        "c" : client,
+    Returns
+    -------
+    Element: Query returns
+    """
+    return makeXMLRequest('/rest/search2', {
         "query": query
-    }
+    })
 
-    #Send Request
-    return requests.get(url = URL, params = PARAMS)
+def search3(query) -> ET.Element:
+    """Run a subsonic search3 query
+
+    Returns
+    -------
+    Element: Query returns
+    """
+    return makeXMLRequest('/rest/search3', {
+        "query": query
+    })
 
 #(binary) Returns request containing song data
 def streamSong(id):
-    #Test Request URL
-    URL = url + '/rest/stream'
-
-    #Parameters
-    PARAMS = {
-        "u" : username,
-        "t" : token,
-        "s" : salt,
-        "v" : '1.15.0',
-        "c" : client,
+    return makeRawRequest("/rest/stream", stream=True, params={
         "id": id
-    }
-
-    #Send Request
-    return requests.get(url = URL, params = PARAMS, stream=True)
-
-#(binary) Returns request containing raw song data
-def downloadSong(id):
-    #Test Request URL
-    URL = url + '/rest/stream'
-
-    #Parameters
-    PARAMS = {
-        "u" : username,
-        "t" : token,
-        "s" : salt,
-        "v" : '1.15.0',
-        "c" : client,
-        "id": id
-    }
-
-    #Send Request
-    return requests.get(url = URL, params = PARAMS)
+    })
 
 #(binary) Searches song given query and returns the song data
 def getSong(query):
     #Query song & save xml response into root
-    root = ET.fromstring(search(query).text)
+    root = search3(query)
 
     #Create songInfo object that will hold song information
     song = None
@@ -253,7 +225,7 @@ def getSong(query):
 #(binary) Searches album given query and returns the album
 def getAlbum(query):
     #Query album & save xml response into root
-    root = ET.fromstring(search(query).text)
+    root = search3(query)
 
     #Create albumInfo object that will hold song information
     album = None
@@ -284,27 +256,13 @@ def getAlbum(query):
 
 #(binary) Returns request containing raw song data
 def getCoverArt(id):
-    #Test Request URL
-    URL = url + '/rest/getCoverArt'
-
-    #Parameters
-    PARAMS = {
-        "u" : username,
-        "t" : token,
-        "s" : salt,
-        "v" : '1.15.0',
-        "c" : client,
-        "id": id
-    }
-
-    #Send Request
-    return requests.get(url = URL, params = PARAMS)
+    return makeRawRequest('/rest/getCoverArt', {"id":id})
 
 
 #(songInfo) Returns an array of songInfo objects that contain song info
 def getSearchResults(query):
     #Query song and save xml response into root
-    root = ET.fromstring(search(query).text)
+    root = search3(query)
 
     #Take all results from list as songInfo objects
     songInfoList = []
@@ -334,24 +292,16 @@ def getSearchResults(query):
 
     return songInfoList
 
-#(binary) Returns a listing of songs in an album.
-def getAlbumData(id):
-    #Test Request URL
-    URL = url + '/rest/getAlbum'
+def getAlbumData(id) -> list[songInfo]:
+    """Return song data for an album
 
-    #Parameters
-    PARAMS = {
-        "u" : username,
-        "t" : token,
-        "s" : salt,
-        "v" : '1.15.0',
-        "c" : client,
+    Returns
+    -------
+    list[songInfo]: Full list of songs that are in the found album
+    """
+    root = makeXMLRequest("/rest/getAlbum", {
         "id": id
-    }
-
-    #Send Request and Parse XML
-    result = requests.get(url = URL, params = PARAMS)
-    root = ET.fromstring(result.text)
+    })
 
     #Put All Songs in List
     songInfoList = []
@@ -383,23 +333,19 @@ def getAlbumData(id):
 
 
 #(binary) Returns a listing of files in a saved playlist.
-def getPlaylistData(id):
-    #Test Request URL
-    URL = url + '/rest/getPlaylist'
+def getPlaylistData(id:str) -> list[songInfo]:
+    """Return song data for a playlist
 
-    #Parameters
-    PARAMS = {
-        "u" : username,
-        "t" : token,
-        "s" : salt,
-        "v" : '1.15.0',
-        "c" : client,
+    Returns
+    -------
+    list[songInfo]: Full list of songs that are in the found album
+    """
+    root = makeXMLRequest('/rest/getPlaylist', {
         "id": id
-    }
+    })
 
-    #Send Request and Parse XML
-    result = requests.get(url = URL, params = PARAMS)
-    root = ET.fromstring(result.text)
+    if root is None:
+        return []
 
     #Put All Songs in List
     songInfoList = []
@@ -426,35 +372,55 @@ def getPlaylistData(id):
 
             #Create Object and Append
             songInfoList.append(songInfo(song_id, title, artist, album, coverArt))
+            log.debug(f"Added {title} to response")
 
     return songInfoList
 
 
 #(playlistInfo) Returns list of playlist
-def getPlaylist(query):
+def getPlaylist(query) -> list[songInfo]:
+    """Get a single playlist
 
-    #Test Request URL
-    URL = url + '/rest/getPlaylists'
-
-    #Parameters
-    PARAMS = {
-        "u" : username,
-        "t" : token,
-        "s" : salt,
-        "v" : '1.15.0',
-        "c" : client
-    }
-
-    #Send Request and Parse XML
-    result = requests.get(url = URL, params = PARAMS)
-    root = ET.fromstring(result.text)
-
-    #Put All Playlist in List
+    returns
+    -------
+    list[songInfo]: Song data for playlist
+    """
+    root = makeXMLRequest('/rest/getPlaylists')
     for playlistList in root.findall("sub:playlists", namespaces=ns):
         for playlist in playlistList.findall("sub:playlist", namespaces=ns):
-            #Match and Return Playlist with Song Objects
+            log.debug(f"Checking {playlist.attrib['name']} vs {query}")
             if(playlist.attrib["name"] == query):
+                log.debug(f"Found {query}")
                 return getPlaylistData(playlist.attrib['id'])
 
-        #No Results
-        return None
+    return None
+
+def getPlaylists() -> list[playlistInfo]:
+    """Get all of the playlists the api has access to
+
+    returns
+    -------
+    list[playlistInfo]: Playlists
+    """
+    root = makeXMLRequest('/rest/getPlaylists')
+    playlists = []
+    for playlistList in root.findall("sub:playlists", namespaces=ns):
+        for playlist in playlistList.findall("sub:playlist", namespaces=ns):
+            pl = playlistInfo(
+                id    = playlist.attrib['id'],
+                title = playlist.attrib['name'],
+                count = playlist.attrib['songCount'],
+                owner = playlist.attrib['owner'],
+                comment = None
+            )
+
+            try:
+                if not playlist.attrib['comment'] == "No comment":
+                    if not playlist.attrib['comment'].strip() == "":
+                        pl.comment = playlist.attrib['comment']
+            except Exception as e:
+                pass
+            finally:
+                playlists.append(pl)
+
+    return playlists
