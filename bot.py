@@ -513,6 +513,7 @@ async def shuffle(ctx):
     """Shuffles the currently active song queue"""
     clearQueue()
     random.shuffle(printQueue)
+    vc = client.voice_clients[0]
     for entry in printQueue:
         await playSong(ctx, vc, entry)
 
