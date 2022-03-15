@@ -58,7 +58,7 @@ class Player():
 
 
 #Clear Queue
-def clearQueue(queue):
+def clearQueue(queue=None):
     if queue is list:
         queue.clear()
     for _ in range(songs.qsize()):
