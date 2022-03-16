@@ -444,8 +444,8 @@ async def queue(ctx):
             paused = ''
             if not vc.is_playing():
                 paused = ' (paused)'
-            e.description = f"Playing{paused}: _{currently_playing.title}"
-            e.description = f"{e.description}\n{currently_playing.artist}"
+            e.description = f"**Currently Playing{paused}: {currently_playing.title}**"
+            e.description = f"{e.description}\n_{currently_playing.artist}"
             e.description = f"{e.description} - {currently_playing.album}_"
 
         pages.append(e)
