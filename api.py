@@ -400,7 +400,7 @@ def searchSong(query, offset:int=0, count:int=20) -> list:
         "songCount": count,
         "albumCount": 0,
         "artistCount": 0,
-        "offset": str(offset),
+        "songOffset": str(offset),
     }).songs
 
 
@@ -413,7 +413,7 @@ def searchAlbum(query, offset:int=0, count:int=20) -> list:
         "songCount": 0,
         "albumCount": count,
         "artistCount": 0,
-        "offset": str(offset),
+        "albumOffset": str(offset),
     }).albums
 
 
@@ -426,5 +426,5 @@ def searchArtist(query, offset:int=0, count:int=20) -> list:
         "songCount": 0,
         "albumCount": 0,
         "artistCount": count,
-        "offset": str(offset),
+        "artistOffset": str(offset),
     }).artists
