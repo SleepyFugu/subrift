@@ -317,7 +317,7 @@ def getPlaylist(id:str) -> list:
         "id": id
     })
 
-    if root is None:
+    if element is None:
         return []
 
     #Put All Songs in List
