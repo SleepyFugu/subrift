@@ -68,18 +68,24 @@ class Player():
 
 
 class PagedEmbed():
-    def __init__(self, title:str, pages):
+    def __init__(self, title:str, pages:list=None):
         self.title = title
         self.page_count = 0
+        self.pages = []
         if isinstance(pages, list):
             self.page_count = len(pages)
             self.pages = pages
 
     def add_page(self, embed:discord.Embed):
+        log.info(f"Added page to {self.title}")
         self.page_count = self.page_count + 1
         self.pages.append(embed)
 
     async def send(self, ctx, timeout:int=30):
+        if self.page_count == 1:
+            self.pages[0].title = self.title
+            return await ctx.send(embed=self.pages[0])
+
         for i in range(self.page_count):
             self.pages[i].title = f"{self.title} ({i + 1} of {self.page_count})"
 
@@ -456,12 +462,9 @@ async def queue(ctx):
             embed = new_embed()
             embedded = 0
 
-    #If theres only one page, just send it and return
-    if len(pages) == 1:
-        pages[0].title = "Queue"
-        return await ctx.send(embed=pages[0])
+    return await PagedEmbed("Queue", pages).send(ctx)
 
-    await PagedEmbed("Queue", pages).send(ctx)
+
 
 @client.command()
 @commands.check(ignore_self)
@@ -470,34 +473,43 @@ async def playlists(ctx):
     """
     playlists = api.getPlaylists()
 
-    embed = discord.Embed(
-        title = "Playlists Available",
-        color = discord.Color.orange(),
-    )
+    if len(playlists) < 1:
+        await ctx.send("No available playlists")
+        return
 
-    embed.set_footer(text=api.url)
+    pages = PagedEmbed("Playlists Available")
+    embed = discord.Embed(color=discord.Color.orange())
     embed.set_thumbnail(url=rift_icon)
 
-    if len(playlists) < 1:
-        embed.description = "No available playlists"
+    def new_embed():
+        nonlocal pages
+        nonlocal embed
+        pages.add_page(embed)
+        embed = discord.Embed(color=discord.Color.orange())
+        embed.set_thumbnail(url=rift_icon)
 
-    else:
-        i = 0
-        for playlist in playlists:
-            i = i + 1
-            value = f"_Songs: {playlist.count}\nOwner: {playlist.owner}"
-            if not playlist.comment is None:
-                value = f"{value}\n{playlist.comment}"
+    count = 1
+    fields = 1
+    for pl in playlists:
+        value = f"_Songs: {pl.count}\nOwner: {pl.owner}"
+        if not pl.comment is None:
+            value = f"{value}\n{pl.comment}"
+        value = f"{value}_"
 
-            value = f"{value}_"
+        embed.add_field(
+            name = f"{count}: {pl.title}",
+            value = value,
+            inline = False
+        )
 
-            embed.add_field(
-                name = f"{i}: {playlist.title}",
-                value = value,
-                inline = False
-            )
+        if fields % 20 == 0 and not count >= len(playlists):
+            new_embed()
 
-    await ctx.send(embed=embed)
+        count = count + 1
+
+    pages.add_page(embed)
+
+    return await pages.send(ctx)
 
 
 @client.command()
