@@ -18,8 +18,6 @@ currently_playing = None
 with open("subrift.json", "r") as read_file:
     data = json.load(read_file)
 
-log.enableDebug()
-
 #Classes
 class Player():
     def __init__(self, ctx, vc, song):
