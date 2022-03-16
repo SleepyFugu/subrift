@@ -142,6 +142,58 @@ class PagedEmbed():
 
         await message.clear_reactions()
 
+class DynamicPagedEmbed(PagedEmbed):
+    def __init__(self, title:str, pages:list=None):
+        super().__init__(title, pages)
+        self.reactions = []
+        self.on_page = 0
+        async def on_react_fn(self, ctx, message, reaction):
+            pass
+        self.on_react_fn = on_react_fn
+
+    def on_react(self, fn):
+        self.on_react_fn = fn
+
+    def add_react(self, react):
+        self.reactions.append(react)
+
+    def update_pages(self):
+        for i in range(self.page_count):
+            self.pages[i].title = f"{self.title} ({i + 1} of {self.page_count})"
+            self.pages[i].set_footer(text=api.url)
+            self.pages[i].set_author(name="")
+            self.pages[i].set_thumbnail(url=rift_icon)
+
+    async def send(self, ctx, timeout:int=30):
+        for i in range(self.page_count):
+            self.pages[i].title = f"{self.title} ({i + 1} of {self.page_count})"
+            self.pages[i].set_footer(text=api.url)
+            self.pages[i].set_author(name="")
+            self.pages[i].set_thumbnail(url=rift_icon)
+
+        message = await ctx.send(embed=self.pages[0])
+        for react in self.reactions:
+            await message.add_reaction(react)
+
+        def check(_, user):
+            nonlocal ctx
+            return user == ctx.author
+
+        timeout = float(30)
+        reaction = None
+
+        while True:
+            await self.on_react_fn(self, ctx, message, reaction)
+            try:
+                reaction, user =  await client.wait_for('reaction_add',
+                    timeout = timeout,
+                    check = check
+                )
+                await message.remove_reaction(reaction, user)
+            except:
+                break
+
+        await message.clear_reactions()
 
 
 #Clear Queue
@@ -213,6 +265,11 @@ async def playSong(ctx, vc, song):
     player = Player(ctx, vc, song)
     await songs.put(player)
 
+
+#Toggles next song
+def toggleNext(self):
+    client.loop.call_soon_threadsafe(playNext.set)
+
 client = commands.Bot(command_prefix=data["PREFIX"] or 's!')
 
 @client.event
@@ -251,11 +308,6 @@ async def quit(ctx):
     await ctx.send("This is so sad...")
     await ctx.bot.logout()
     exit(0)
-
-
-#Toggles next song
-def toggleNext(self):
-    client.loop.call_soon_threadsafe(playNext.set)
 
 
 @client.command()
@@ -387,41 +439,101 @@ async def resume(ctx):
 @commands.check(log_command)
 @commands.check(ignore_self)
 async def searchSong(ctx, *, query):
-    """Search for a particular string on the Subsonic server
+    """Test bot with a ping
     """
+    description = "🔎: _Add more search results_\n✅: _Add all results so far to the queue_"
+    songs_found = 0
+    all_results = []
+    songInfoList = api.searchSong(query, count=10)
+    embed = discord.Embed(description = description)
 
-    songInfoList = api.searchSong(query)
-    pages = PagedEmbed("Search Results")
-    numSongs = len(songInfoList)
+    play_react = '✅'
+    first_react = '⏮'
+    prev_react = '⏪'
+    next_react = '⏩'
+    last_react = '⏭'
+    search_react = '🔎'
 
-    embed = discord.Embed()
-
-    if numSongs == 0:
+    if len(songInfoList) < 1:
+        pages = PagedEmbed("Search Results")
         embed.description = "No results found"
         pages.add_page(embed)
         return await pages.send(ctx)
 
-    count = 1
-    fields = 1
     for song in songInfoList:
+        all_results.append(song)
+        songs_found = songs_found + 1
         embed.add_field(
-            name=f"{count}: {song.title}",
-            value=f"ID: _{song.id}_\nAlbum: _{song.album}_\nArtist: _{song.artist}_",
+            name=f"{songs_found}: {song.title} by {song.artist}",
+            value=f"ID: _{song.id}_\nAlbum: _{song.album}_",
             inline=False
         )
 
-        count = count + 1
-        fields = fields + 1
+    async def on_react_fn(self, ctx, message, reaction):
+        nonlocal description
+        nonlocal songs_found
 
-        if fields % 20 == 0 and count < numSongs:
-            pages.add_page(embed)
-            embed = discord.Embed()
-            fields = 0
+        if reaction is None:
+            return
 
-    pages.add_page(embed)
+        if str(reaction) == search_react:
+            embed = discord.Embed(description = description)
+            songInfoList = api.searchSong(query, count=10, offset=songs_found)
+            if len(songInfoList) < 1:
+                return
 
-    return await pages.send(ctx)
+            for song in songInfoList:
+                all_results.append(song)
+                songs_found = songs_found + 1
+                embed.add_field(
+                    name=f"{songs_found}: {song.title} by {song.artist}",
+                    value=f"ID: _{song.id}_\nAlbum: _{song.album}_",
+                    inline=False
+                )
 
+            self.add_page(embed)
+            self.update_pages()
+            self.on_page = len(self.pages) - 1
+
+            await message.edit(embed = self.pages[self.on_page])
+        elif str(reaction) == play_react:
+            if not client.voice_clients:
+                try:
+                    await (ctx.author.voice.channel).connect()
+                except AttributeError as e:
+                    await ctx.send("You need to be in voice to do that")
+                    return
+            vc = client.voice_clients[0]
+            for song in all_results:
+                printQueue.append(song)
+                await playSong(ctx, vc, song)
+
+        elif str(reaction) == first_react:
+            self.on_page= 0
+            await message.edit(embed = self.pages[self.on_page])
+        elif str(reaction) == prev_react:
+            self.on_page = util.constrain(self.on_page - 1, 0, self.page_count - 1)
+            await message.edit(embed = self.pages[self.on_page])
+        elif str(reaction) == next_react:
+            self.on_page = util.constrain(self.on_page + 1, 0, self.page_count - 1)
+            await message.edit(embed = self.pages[self.on_page])
+        elif str(reaction) == last_react:
+            self.on_page = util.constrain(self.page_count, 0, self.page_count - 1)
+            await message.edit(embed = self.pages[self.on_page])
+
+    dynamic = DynamicPagedEmbed("Search Results")
+    dynamic.on_react(on_react_fn)
+
+    dynamic.add_react(play_react)
+    dynamic.add_react(first_react)
+    dynamic.add_react(prev_react)
+    dynamic.add_react(next_react)
+    dynamic.add_react(last_react)
+    dynamic.add_react(search_react)
+
+    dynamic.add_page(embed)
+
+    await dynamic.send(ctx, timeout=60)
 
 @client.command()
 @commands.check(require_vc)
@@ -441,8 +553,6 @@ async def queue(ctx):
         e = discord.Embed(
             color     = discord.Color.orange(),
             footer    = api.url,
-            author    = '<@SleepyAli#3611>',
-            thumbnail = rift_icon,
             description = 'Nothing Playing'
         )
 
@@ -469,18 +579,11 @@ async def queue(ctx):
         embed.add_field(
             name   = f"{count}: {song.title}",
             value  = f"{song.artist} - {song.album}",
-            inline = True
+            inline = False
         )
 
-        if embedded % 2 != 1:
-            embed.add_field(
-                name = "\u200b",
-                value = "\u200b",
-                inline = True
-            )
-
         # Split into new embed every 21 entries
-        if embedded >= 16 and count <= len(printQueue):
+        if embedded >= 10 and count <= len(printQueue):
             embed = new_embed()
             embedded = 0
 
