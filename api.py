@@ -67,6 +67,12 @@ class searchResults:
         if isinstance(results, ET.Element):
             for result in results.findall(f"sub:{searchForm}", namespaces=ns):
                 for song in result.findall('sub:song', namespaces=ns):
+                    for a in ['id', 'title', 'artist', 'album', 'coverArt']:
+                        try:
+                            _ = song.attrib[a]
+                        except KeyError:
+                            song.attrib[a] = ''
+
                     self.songs.append(songInfo(
                         id = song.attrib['id'],
                         title = song.attrib['title'],
@@ -76,6 +82,12 @@ class searchResults:
                     ))
 
                 for album in result.findall('sub:album', namespaces=ns):
+                    for a in ['id', 'name', 'artist', 'coverArt']:
+                        try:
+                            _ = album.attrib[a]
+                        except KeyError:
+                            album.attrib[a] = ''
+
                     self.albums.append(albumInfo(
                         id = album.attrib['id'],
                         title = album.attrib['name'],
