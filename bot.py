@@ -60,6 +60,7 @@ class Player():
             pass
 
         printQueue.pop(0)
+        global currently_playing
         currently_playing = song
         beforeArgs = "-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5"
         vc.play(discord.FFmpegPCMAudio(
