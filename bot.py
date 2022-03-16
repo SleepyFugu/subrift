@@ -67,6 +67,71 @@ class Player():
         )
 
 
+class PagedEmbed():
+    def __init__(self, title:str, pages):
+        self.title = title
+        self.page_count = 0
+        if isinstance(pages, list):
+            self.page_count = len(pages)
+            self.pages = pages
+
+    def add_page(self, embed:discord.Embed):
+        self.page_count = self.page_count + 1
+        self.pages.append(embed)
+
+    async def send(self, ctx, timeout:int=30):
+        for i in range(self.page_count):
+            self.pages[i].title = f"{self.title} ({i + 1} of {self.page_count})"
+
+        first_react = '⏮'
+        prev_react = '◀'
+        next_react = '▶'
+        last_react = '⏭'
+
+        message = await ctx.send(embed=self.pages[0])
+        await message.add_reaction(first_react)
+        await message.add_reaction(prev_react)
+        await message.add_reaction(next_react)
+        await message.add_reaction(last_react)
+
+        def check(_, user):
+            nonlocal ctx
+            return user == ctx.author
+
+        at_page = 0
+        timeout = float(30)
+        reaction = None
+
+        while True:
+            if str(reaction) == first_react:
+                at_page = 0
+                await message.edit(embed = self.pages[at_page])
+            elif str(reaction) == prev_react:
+                at_page = util.constrain(at_page - 1, 0, self.page_count - 1)
+                await message.edit(embed = self.pages[at_page])
+            elif str(reaction) == next_react:
+                at_page = util.constrain(at_page + 1, 0, self.page_count - 1)
+                await message.edit(embed = self.pages[at_page])
+            elif str(reaction) == last_react:
+                at_page = util.constrain(self.page_count, 0, self.page_count - 1)
+                await message.edit(embed = self.pages[at_page])
+
+            try:
+                reaction, user = await client.wait_for('reaction_add',
+                    timeout = timeout,
+                    check   = check,
+                )
+                await message.remove_reaction(reaction, user)
+            except:
+                break
+
+        await message.clear_reactions()
+
+
+
+
+
+
 #Clear Queue
 def clearQueue(queue=None):
     if isinstance(queue, list):
@@ -399,52 +464,7 @@ async def queue(ctx):
         pages[0].title = "Queue"
         return await ctx.send(embed=pages[0])
 
-    for i in range(total):
-        pages[i].title = f"Queue ({i + 1} of {total})"
-
-    first_react = '⏮'
-    prev_react = '◀'
-    next_react = '▶'
-    last_react = '⏭'
-
-    message = await ctx.send(embed=pages[0])
-    await message.add_reaction(first_react)
-    await message.add_reaction(prev_react)
-    await message.add_reaction(next_react)
-    await message.add_reaction(last_react)
-
-    def check(reaction, user):
-        nonlocal ctx
-        return user == ctx.author
-
-    at_page = 0
-    timeout = float(30)
-    reaction = None
-
-    while True:
-        if str(reaction) == first_react:
-            at_page = 0
-            await message.edit(embed = pages[at_page])
-        elif str(reaction) == prev_react:
-            at_page = util.constrain(at_page - 1, 0, total - 1)
-            await message.edit(embed = pages[at_page])
-        elif str(reaction) == next_react:
-            at_page = util.constrain(at_page + 1, 0, total - 1)
-            await message.edit(embed = pages[at_page])
-        elif str(reaction) == last_react:
-            at_page = util.constrain(total, 0, total - 1)
-            await message.edit(embed = pages[at_page])
-
-        try:
-            reaction, user = await client.wait_for('reaction_add',
-                timeout = timeout,
-                check   = check,
-            )
-            await message.remove_reaction(reaction, user)
-        except:
-            break
-
-    await message.clear_reactions()
+    await PagedEmbed("Queue", pages).send(ctx)
 
 @client.command()
 @commands.check(ignore_self)
