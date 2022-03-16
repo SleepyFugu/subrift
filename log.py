@@ -21,6 +21,7 @@ def disableDebug():
     return None
 
 def debugEnabled() -> bool:
+  global debug_enabled
   debug_enabled
 
 def levelToString(level: int):
