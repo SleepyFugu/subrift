@@ -54,12 +54,11 @@ class playlistInfo:
         self.comment = comment
 class searchResults:
     def __init__(self, results:ET.Element, form:int=3):
-        if form >= 3:
-            searchForm = 'searchResult3'
-        elif form == 2:
-            searchForm = 'searchResult2'
-        elif form < 2:
-            searchForm = 'searchResult'
+        if form != 1:
+            searchForm = f"searchResult{form}"
+        else:
+            searchForm = "searchResult"
+
 
         self.songs = []
         self.albums = []
@@ -96,7 +95,7 @@ class searchResults:
 
 
 def makeXMLRequest(endpoint:str, params=None) -> ET.Element:
-    """"Perform an http request against an XML endpoint, and return it's root element
+    """Perform an http request against an XML endpoint, and return it's root element
 
     If the endpoint reports a failure, but still returns valid XML, the error is logged
     and None is returned
