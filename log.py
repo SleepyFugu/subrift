@@ -8,6 +8,7 @@ def enableDebug():
   global debug
   global debug_enabled
   debug_enabled = True
+  info("Enabled debugging mode")
   def debug(msg):
     print(f"{levelToString(4)} | {inspect.stack()[1].function}: {msg}")
 
@@ -15,6 +16,7 @@ def disableDebug():
   global debug
   global debug_enabled
   debug_enabled = False
+  info("Disabled debugging mode")
   def debug(_):
     return None
 
