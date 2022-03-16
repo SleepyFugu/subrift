@@ -12,6 +12,7 @@ rift_icon  = 'https://cdn.discordapp.com/avatars/699752709028446259/df9496def162
 songs      = asyncio.Queue()
 playNext   = asyncio.Event()
 printQueue = []
+currently_playing = None
 
 #Retrieve data from json file
 with open("subrift.json", "r") as read_file:
@@ -59,6 +60,7 @@ class Player():
             pass
 
         printQueue.pop(0)
+        currently_playing = song
         beforeArgs = "-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5"
         vc.play(discord.FFmpegPCMAudio(
                     source = api.streamSong(song.id).url,
@@ -67,6 +69,8 @@ class Player():
         )
 
 
+# Note: Based heavily on:
+#  https://stackoverflow.com/questions/55075157/discord-rich-embed-buttons
 class PagedEmbed():
     def __init__(self, title:str, pages:list=None):
         self.title = title
@@ -84,10 +88,16 @@ class PagedEmbed():
     async def send(self, ctx, timeout:int=30):
         if self.page_count == 1:
             self.pages[0].title = self.title
+            self.pages[0].set_footer(text=api.url)
+            self.pages[0].set_author(name="")
+            self.pages[0].set_thumbnail(url=rift_icon)
             return await ctx.send(embed=self.pages[0])
 
         for i in range(self.page_count):
             self.pages[i].title = f"{self.title} ({i + 1} of {self.page_count})"
+            self.pages[i].set_footer(text=api.url)
+            self.pages[i].set_author(name="")
+            self.pages[i].set_thumbnail(url=rift_icon)
 
         first_react = '⏮'
         prev_react = '◀'
@@ -132,9 +142,6 @@ class PagedEmbed():
                 break
 
         await message.clear_reactions()
-
-
-
 
 
 
@@ -409,9 +416,6 @@ async def search(ctx, *, query):
     await ctx.send(embed=embed)
 
 
-#Check Queue
-# Note: Based heavily on:
-#  https://stackoverflow.com/questions/55075157/discord-rich-embed-buttons
 @client.command()
 @commands.check(require_vc)
 @commands.check(require_queue)
@@ -421,17 +425,28 @@ async def queue(ctx):
     """List the current queue
     """
     pages = []
+    vc = client.voice_clients[0]
 
     #Embed Message
     def new_embed():
         nonlocal pages
+        nonlocal vc
         e = discord.Embed(
             color     = discord.Color.orange(),
             footer    = api.url,
             author    = '<@SleepyAli#3611>',
             thumbnail = rift_icon,
-            description = '#: Song - Artist - Album'
+            description = 'Nothing Playing'
         )
+
+        if isinstance(currently_playing, api.songInfo):
+            paused = ''
+            if not vc.is_playing():
+                paused = ' (paused)'
+            e.description = f"Playing{paused}: _{currently_playing.title}"
+            e.description = f"{e.description}\n{currently_playing.artist}"
+            e.description = f"{e.description} - {currently_playing.album}_"
+
         pages.append(e)
         return e
 
@@ -479,7 +494,6 @@ async def playlists(ctx):
 
     pages = PagedEmbed("Playlists Available")
     embed = discord.Embed(color=discord.Color.orange())
-    embed.set_thumbnail(url=rift_icon)
 
     def new_embed():
         nonlocal pages
