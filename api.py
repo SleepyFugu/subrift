@@ -346,7 +346,7 @@ def getPlaylist(id:str) -> list:
 def getPlaylists() -> list:
     """Get all of the playlists the api has access to
 
-    returns
+    Returns
     -------
     list[playlistInfo]: Playlists
     """
@@ -412,7 +412,7 @@ def searchSong(query):
 def searchPlaylist(query) -> list:
     """Get a single playlist
 
-    returns
+    Returns
     -------
     list[songInfo]: Song data for playlist
     """

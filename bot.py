@@ -73,11 +73,13 @@ def clearQueue(queue=None):
         songs.get_nowait()
         songs.task_done()
 
+
 async def require_playing(ctx: discord.ext.commands.Context):
     if not client.voice_clients:
         await ctx.send("There is nothing playing")
         return False
     return True
+
 
 async def require_vc(ctx: discord.ext.commands.Context):
     if ctx is None:
@@ -107,6 +109,7 @@ async def require_queue(ctx: discord.ext.commands.Context):
 async def log_command(ctx: discord.ext.commands.Context):
     log.info(f"{ctx.author.name} ran {ctx.command.name}")
     return True
+
 
 async def ignore_self(ctx: discord.ext.commands.Context):
     if ctx.author == client.user:
