@@ -40,6 +40,11 @@ class albumInfo:
         self.artist = artist
         self.coverArt = coverArt
 
+class artistInfo:
+    def __init__(self, id, name):
+        self.id = id
+        self.name = name
+
 class playlistInfo:
     def __init__(self, id, title, count, owner, comment):
         self.id = id
@@ -47,6 +52,47 @@ class playlistInfo:
         self.count = count
         self.owner = owner
         self.comment = comment
+class searchResults:
+    def __init__(self, results:ET.Element, form:int=3):
+        if form >= 3:
+            searchForm = 'searchResult3'
+        elif form == 2:
+            searchForm = 'searchResult2'
+        elif form < 2:
+            searchForm = 'searchResult'
+
+        self.songs = []
+        self.albums = []
+        self.artists = []
+
+        if isinstance(results, ET.Element):
+            for result in results.findall(f"sub:{searchForm}", namespaces=ns):
+                for song in result.findall('sub:song', namespaces=ns):
+                    self.songs.append(songInfo(
+                        id = song.attrib['id'],
+                        title = song.attrib['title'],
+                        artist = song.attrib['artist'],
+                        album = song.attrib['album'],
+                        coverArt = song.attrib['coverArt']
+                    ))
+
+                for album in result.findall('sub:album', namespaces=ns):
+                    self.albums.append(albumInfo(
+                        id = album.attrib['id'],
+                        title = album.attrib['name'],
+                        artist = album.attrib['artist'],
+                        coverArt = album.attrib['coverArt']
+                    ))
+
+                for artist in result.findall('sub:artist', namespaces=ns):
+                    self.artists.append(albumInfo(
+                        id = artist.attrib['id'],
+                        name = artist.attrib['name'],
+                    ))
+
+        self.song_count = len(self.songs)
+        self.album_count = len(self.albums)
+        self.artist_count = len(self.artists)
 
 
 def makeXMLRequest(endpoint:str, params=None) -> ET.Element:
@@ -172,27 +218,26 @@ def getMusicDirectory(id):
     return makeXMLRequest('/rest/getMusicDirectory', {"id": id})
 
 
-def search2(query) -> ET.Element:
+def search2(query, params:dict={}) -> searchResults:
     """Run a subsonic search2 query
 
     Returns
     -------
     Element: Query returns
     """
-    return makeXMLRequest('/rest/search2', {
-        "query": query
-    })
+    params["query"] = query
+    return searchResults(form=2, results=makeXMLRequest('/rest/search2', params))
 
-def search3(query) -> ET.Element:
+
+def search3(query, params:dict={}) -> searchResults:
     """Run a subsonic search3 query
 
     Returns
     -------
     Element: Query returns
     """
-    return makeXMLRequest('/rest/search3', {
-        "query": query
-    })
+    params["query"] = query
+    return searchResults(form=3, results=makeXMLRequest('/rest/search3', params))
 
 #(binary) Returns request containing song data
 def streamSong(id):
@@ -201,39 +246,11 @@ def streamSong(id):
     })
 
 #(binary) Searches song given query and returns the song data
-def getSongFromName(query):
-    #Query song & save xml response into root
-    root = search3(query)
-
-    #Create songInfo object that will hold song information
-    song = None
-
-    #Grab first song
-    for result in root.findall("sub:searchResult3", namespaces=ns):
-        #Get FIRST song result
-        for song in result.findall("sub:song", namespaces=ns):
-            #Check for empty attributes
-            song_id = ''
-            title = ''
-            artist = ''
-            album = ''
-            coverArt = ''
-            if 'id' in song.attrib:
-                song_id = song.attrib["id"]
-            if 'title' in song.attrib:
-                title = song.attrib["title"]
-            if 'artist' in song.attrib:
-                artist = song.attrib["artist"]
-            if 'album' in song.attrib:
-                album = song.attrib["album"]
-            if 'coverArt' in song.attrib:
-                coverArt = song.attrib["coverArt"]
-
-            #Create object & break
-            song = songInfo(song_id, title, artist, album, coverArt)
-            break
-
-    return song
+def getSongFromName(query) -> songInfo:
+    songs = searchSong(query, count=1)
+    if len(songs) < 1:
+        return None
+    return songs[0]
 
 
 def getSong(id:str) -> songInfo:
@@ -267,35 +284,24 @@ def getAlbum(id) -> list:
     -------
     list[songInfo]: Full list of songs that are in the found album
     """
-    root = makeXMLRequest("/rest/searchAlbum", {
-        "id": id
+    element = makeXMLRequest("/rest/getAlbum", {
+        "id": id,
     })
+
+    if element is None:
+        return None
 
     #Put All Songs in List
     songInfoList = []
-    for album in root.findall("sub:album", namespaces=ns):
+    for album in element.findall("sub:album", namespaces=ns):
         for entry in album.findall("sub:song", namespaces=ns):
-            #Check for empty attributes
-            song_id = ''
-            title = ''
-            artist = ''
-            album = ''
-            coverArt = ''
-            if 'id' in entry.attrib:
-                song_id = entry.attrib["id"]
-            else:
-                continue
-            if 'title' in entry.attrib:
-                title = entry.attrib["title"]
-            if 'artist' in entry.attrib:
-                artist = entry.attrib["artist"]
-            if 'album' in entry.attrib:
-                album = entry.attrib["album"]
-            if 'coverArt' in entry.attrib:
-                coverArt = entry.attrib["coverArt"]
-
-            #Create Object and Append
-            songInfoList.append(songInfo(song_id, title, artist, album, coverArt))
+            songInfoList.append(songInfo(
+                id = entry.attrib["id"],
+                title = entry.attrib["title"],
+                artist = entry.attrib["artist"],
+                album = entry.attrib["album"],
+                coverArt = entry.attrib["coverArt"])
+            )
 
     return songInfoList
 
@@ -307,7 +313,7 @@ def getPlaylist(id:str) -> list:
     -------
     list[songInfo]: Full list of songs that are in the found album
     """
-    root = makeXMLRequest('/rest/getPlaylist', {
+    element = makeXMLRequest('/rest/getPlaylist', {
         "id": id
     })
 
@@ -316,30 +322,15 @@ def getPlaylist(id:str) -> list:
 
     #Put All Songs in List
     songInfoList = []
-    for playlist in root.findall("sub:playlist", namespaces=ns):
+    for playlist in element.findall("sub:playlist", namespaces=ns):
         for entry in playlist.findall("sub:entry", namespaces=ns):
-            #Check for empty attributes
-            song_id = ''
-            title = ''
-            artist = ''
-            album = ''
-            coverArt = ''
-            if 'id' in entry.attrib:
-                song_id = entry.attrib["id"]
-            else:
-                continue
-            if 'title' in entry.attrib:
-                title = entry.attrib["title"]
-            if 'artist' in entry.attrib:
-                artist = entry.attrib["artist"]
-            if 'album' in entry.attrib:
-                album = entry.attrib["album"]
-            if 'coverArt' in entry.attrib:
-                coverArt = entry.attrib["coverArt"]
-
-            #Create Object and Append
-            songInfoList.append(songInfo(song_id, title, artist, album, coverArt))
-            log.debug(f"Added {title} to response")
+            songInfoList.append(songInfo(
+                id = entry.attrib["id"],
+                title = entry.attrib["title"],
+                artist = entry.attrib["artist"],
+                album = entry.attrib["album"],
+                coverArt = entry.attrib["coverArt"])
+            )
 
     return songInfoList
 
@@ -375,38 +366,11 @@ def getPlaylists() -> list:
     return playlists
 
 
-#(songInfo) Returns an array of songInfo objects that contain song info
-def searchSong(query):
-    #Query song and save xml response into root
-    root = search3(query)
-
-    #Take all results from list as songInfo objects
-    songInfoList = []
-    for result in root.findall("sub:searchResult3", namespaces=ns):
-        for song in result.findall("sub:song", namespaces=ns):
-            #Check for empty attributes
-            song_id = ''
-            title = ''
-            artist = ''
-            album = ''
-            coverArt = ''
-            if 'id' in song.attrib:
-                song_id = song.attrib["id"]
-            else:
-                continue
-            if 'title' in song.attrib:
-                title = song.attrib["title"]
-            if 'artist' in song.attrib:
-                artist = song.attrib["artist"]
-            if 'album' in song.attrib:
-                album = song.attrib["album"]
-            if 'coverArt' in song.attrib:
-                coverArt = song.attrib["coverArt"]
-
-            #Create Object and Append
-            songInfoList.append(songInfo(song_id, title, artist, album, coverArt))
-
-    return songInfoList
+#(binary) Returns request containing raw song data
+def getCoverArt(id):
+    """Performs a raw request for a cover image using an ID
+    """
+    return makeRawRequest('/rest/getCoverArt', {"id":id})
 
 
 #(playlistInfo) Returns list of playlist
@@ -427,38 +391,40 @@ def searchPlaylist(query) -> list:
     return None
 
 
-#(binary) Searches album given query and returns the album
-def searchAlbum(query):
-    #Query album & save xml response into root
-    root = search3(query)
+def searchSong(query, offset:int=0, count:int=20) -> list:
+    """Perform a search3 with albums and artists suppressed, and return the songs found
 
-    #Create albumInfo object that will hold song information
-    album = None
+    Supports passing an offset for paging
+    """
+    return search3(query, {
+        "songCount": count,
+        "albumCount": 0,
+        "artistCount": 0,
+        "offset": str(offset),
+    }).songs
 
-    #Grab first song
-    for result in root.findall("sub:searchResult3", namespaces=ns):
-        #Get FIRST song result
-        for album in result.findall("sub:album", namespaces=ns):
-            #Check for empty attributes
-            album_id = ''
-            title = ''
-            artist = ''
-            coverArt = ''
-            if 'id' in album.attrib:
-                album_id = album.attrib["id"]
-            if 'name' in album.attrib:
-                title = album.attrib["name"]
-            if 'artist' in album.attrib:
-                artist = album.attrib["artist"]
-            if 'coverArt' in album.attrib:
-                coverArt = album.attrib["coverArt"]
 
-            #Create object & break
-            album = albumInfo(album_id, title, artist, coverArt)
-            break
+def searchAlbum(query, offset:int=0, count:int=20) -> list:
+    """Perform a search3 with songs and artists suppressed, and return the songs found
 
-    return album
+    Supports passing an offset for paging
+    """
+    return search3(query, {
+        "songCount": 0,
+        "albumCount": count,
+        "artistCount": 0,
+        "offset": str(offset),
+    }).albums
 
-#(binary) Returns request containing raw song data
-def getCoverArt(id):
-    return makeRawRequest('/rest/getCoverArt', {"id":id})
+
+def searchArtist(query, offset:int=0, count:int=20) -> list:
+    """Perform a search3 with songs and albums suppressed, and return the songs found
+
+    Supports passing an offset for paging
+    """
+    return search3(query, {
+        "songCount": 0,
+        "albumCount": 0,
+        "artistCount": count,
+        "offset": str(offset),
+    }).artists
