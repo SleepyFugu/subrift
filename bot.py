@@ -201,7 +201,7 @@ async def play(ctx, *, query):
         await (ctx.author.voice.channel).connect()
 
     vc = client.voice_clients[0]
-    song = api.getSong(query)
+    song = api.getSongFromName(query)
 
     if song is None:
         await ctx.send("Cannot locate song")

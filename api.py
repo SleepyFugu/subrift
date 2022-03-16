@@ -48,7 +48,18 @@ class playlistInfo:
         self.owner = owner
         self.comment = comment
 
+
 def makeXMLRequest(endpoint:str, params=None) -> ET.Element:
+    """"Perform an http request against an XML endpoint, and return it's root element
+
+    If the endpoint reports a failure, but still returns valid XML, the error is logged
+    and None is returned
+
+    Returns
+    -------
+    ET.Element: XML root element on successful request
+    None: None is returned upon failure
+    """
     endpoint = endpoint.lstrip("/")
     log.debug(f"Requesting {url}/{endpoint} w/ params={params} ...")
 
@@ -84,6 +95,12 @@ def makeXMLRequest(endpoint:str, params=None) -> ET.Element:
 
 def makeRawRequest(endpoint:str, params=None, stream=False) -> requests.Response:
     """Make an http request to the Subsonic server and return the raw response object
+
+    If a non-2XX code is received from the server, None is return and the error is logged
+
+    Returns
+    -------
+    requests.Response: The http response object
     """
     endpoint = endpoint.lstrip("/")
     log.debug(f"Requesting {url}/{endpoint} w/ params={params} ...")
@@ -124,6 +141,7 @@ def pingServer():
         return True
     return False
 
+
 def getLicense() -> bool:
     """Return the current state of the Subsonic license
 
@@ -134,18 +152,25 @@ def getLicense() -> bool:
     root = makeXMLRequest('/rest/getLicense')
     return distutils.util.strtobool(root[0].attrib['valid'])
 
-#(xml) Returns xml object containing music folders
-def getMusicFolders() -> ET.Element:
-    return makeXMLRequest('/rest/getMusic/Folders')
 
 #(xml) Returns xml object containing indexes
 def getIndexes():
     return makeXMLRequest('/rest/getIndexes')
 
+
+#(xml) Returns xml object containing music folders
+# TODO: Create a musicfolders class and refactor this function
+def getMusicFolders() -> ET.Element:
+    """
+    """
+    return makeXMLRequest('/rest/getMusic/Folders')
+
+
 def getMusicDirectory(id):
     """Returns xml object containing music directory when given id
     """
     return makeXMLRequest('/rest/getMusicDirectory', {"id": id})
+
 
 def search2(query) -> ET.Element:
     """Run a subsonic search2 query
@@ -176,7 +201,7 @@ def streamSong(id):
     })
 
 #(binary) Searches song given query and returns the song data
-def getSong(query):
+def getSongFromName(query):
     #Query song & save xml response into root
     root = search3(query)
 
@@ -209,6 +234,29 @@ def getSong(query):
             break
 
     return song
+
+
+def getSong(id) -> songInfo:
+    """Return a songInfo given an ID
+    """
+    element = makeXMLRequest('/rest/getSong', {
+        "id": id
+    })
+
+    if element is None:
+        return None
+
+    song = element.find('sub:song', namespaces=ns)
+    if song is None:
+        return None
+
+    return songInfo(
+        id = song.attrib['id'],
+        title = song.attrib['title'],
+        album = song.attrib['album'],
+        artist = song.attrib['artist'],
+        covertArt = song.attrib['coverArt']
+    )
 
 
 def getAlbum(id) -> list:
