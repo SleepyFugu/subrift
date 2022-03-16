@@ -179,7 +179,6 @@ def toggleNext(self):
     client.loop.call_soon_threadsafe(playNext.set)
 
 
-#Next Song
 @client.command()
 @commands.check(require_playing)
 @commands.check(require_vc)
@@ -187,6 +186,8 @@ def toggleNext(self):
 @commands.check(log_command)
 @commands.check(ignore_self)
 async def skip(ctx):
+    """Skip the currently playing song
+    """
     vc = client.voice_clients[0]
     if vc.is_playing():
         vc.stop()
@@ -532,7 +533,7 @@ async def shuffle(ctx):
 @play.error
 async def play_error(ctx, error):
     if isinstance(error, commands.MissingRequiredArgument):
-        await ctx.send('Try `play [song-title]`')
+        await ctx.send('Usage: `play [title | song-id]`')
 
 
 if __name__ == '__main__':
