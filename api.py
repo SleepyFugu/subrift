@@ -236,7 +236,7 @@ def getSongFromName(query):
     return song
 
 
-def getSong(id) -> songInfo:
+def getSong(id:str) -> songInfo:
     """Return a songInfo given an ID
     """
     element = makeXMLRequest('/rest/getSong', {
@@ -247,6 +247,7 @@ def getSong(id) -> songInfo:
         return None
 
     song = element.find('sub:song', namespaces=ns)
+
     if song is None:
         return None
 
@@ -255,7 +256,7 @@ def getSong(id) -> songInfo:
         title = song.attrib['title'],
         album = song.attrib['album'],
         artist = song.attrib['artist'],
-        covertArt = song.attrib['coverArt']
+        coverArt = song.attrib['coverArt']
     )
 
 

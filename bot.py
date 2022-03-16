@@ -17,6 +17,8 @@ printQueue = []
 with open("subrift.json", "r") as read_file:
     data = json.load(read_file)
 
+log.enableDebug()
+
 #Classes
 class Player():
     def __init__(self, ctx, vc, song):
@@ -205,14 +207,14 @@ async def play(ctx, *, query):
         await (ctx.author.voice.channel).connect()
 
     vc = client.voice_clients[0]
-
     song = api.getSong(query)
-    if song is None:
-        song = api.getSongFromName(query)
 
-    if song is None:
-        await ctx.send("Cannot locate song")
-        return
+    if not isinstance(song, api.songInfo):
+        log.debug(song)
+        song = api.getSongFromName(query)
+        if not isinstance(song, api.songInfo):
+            await ctx.send("Cannot locate song")
+            return
 
     printQueue.append(song)
     await ctx.send('Added to Queue')
