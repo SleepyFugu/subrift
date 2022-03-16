@@ -415,11 +415,9 @@ async def queue(ctx):
     """List the current queue
     """
     pages = []
-    total = 0
 
     #Embed Message
     def new_embed():
-        nonlocal total
         nonlocal pages
         e = discord.Embed(
             color     = discord.Color.orange(),
@@ -429,7 +427,6 @@ async def queue(ctx):
             description = '#: Song - Artist - Album'
         )
         pages.append(e)
-        total = total + 1
         return e
 
     embed = new_embed()
@@ -460,7 +457,7 @@ async def queue(ctx):
             embedded = 0
 
     #If theres only one page, just send it and return
-    if total == 1:
+    if len(pages) == 1:
         pages[0].title = "Queue"
         return await ctx.send(embed=pages[0])
 
