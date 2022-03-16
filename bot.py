@@ -406,7 +406,7 @@ async def searchSong(ctx, *, query):
     for song in songInfoList:
         embed.add_field(
             name=f"{count}: {song.title}",
-            value=f"ID: _{song.id}_\nAlbum: _{song.title}_\nArtist: _{song.artist}_",
+            value=f"ID: _{song.id}_\nAlbum: _{song.album}_\nArtist: _{song.artist}_",
             inline=False
         )
 
