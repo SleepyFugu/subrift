@@ -80,7 +80,7 @@ class PagedEmbed():
             self.pages = pages
 
     def add_page(self, embed:discord.Embed):
-        log.info(f"Added page to {self.title}")
+        log.debug(f"Added page to {self.title}")
         self.page_count = self.page_count + 1
         self.pages.append(embed)
 
@@ -386,33 +386,41 @@ async def resume(ctx):
 @client.command()
 @commands.check(log_command)
 @commands.check(ignore_self)
-async def search(ctx, *, query):
+async def searchSong(ctx, *, query):
     """Search for a particular string on the Subsonic server
     """
-    if ctx.author == client.user:
-        return
 
     songInfoList = api.searchSong(query)
+    pages = PagedEmbed("Search Results")
+    numSongs = len(songInfoList)
 
-    #Embed Message
-    embed = discord.Embed(
-        title = 'Search Results',
-        color = discord.Color.orange()
-    )
+    embed = discord.Embed()
 
-    embed.set_footer(text=api.url)
-    embed.set_author(name='SubRift')
-    embed.set_thumbnail(url=rift_icon)
+    if numSongs == 0:
+        embed.description = "No results found"
+        pages.add_page(embed)
+        return await pages.send(ctx)
 
-    #Add Field for every song
+    count = 1
+    fields = 1
     for song in songInfoList:
         embed.add_field(
-            name=str(song.id),
-            value=f"{song.title} - {song.artist}",
+            name=f"{count}: {song.title}",
+            value=f"ID: _{song.id}_\nAlbum: _{song.title}_\nArtist: _{song.artist}_",
             inline=False
         )
 
-    await ctx.send(embed=embed)
+        count = count + 1
+        fields = fields + 1
+
+        if fields % 20 == 0 and count < numSongs:
+            pages.add_page(embed)
+            embed = discord.Embed()
+            fields = 0
+
+    pages.add_page(embed)
+
+    return await pages.send(ctx)
 
 
 @client.command()
