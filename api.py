@@ -138,18 +138,6 @@ def getLicense() -> bool:
 def getMusicFolders() -> ET.Element:
     return makeXMLRequest('/rest/getMusic/Folders')
 
-#Prints music folders
-def printMusicFolders():
-    #Parse XML
-    root = getMusicFolders()
-
-    #Print Name & ID of each music folder
-    for musicFolders in root.findall("sub:musicFolders", namespaces=ns):
-        for musicFolder in musicFolders.findall('sub:musicFolder', namespaces=ns):
-            name = musicFolder.attrib["name"]
-            id = musicFolder.attrib["id"]
-            print(name, id)
-
 #(xml) Returns xml object containing indexes
 def getIndexes():
     return makeXMLRequest('/rest/getIndexes')
@@ -222,84 +210,15 @@ def getSong(query):
 
     return song
 
-#(binary) Searches album given query and returns the album
-def getAlbum(query):
-    #Query album & save xml response into root
-    root = search3(query)
 
-    #Create albumInfo object that will hold song information
-    album = None
-
-    #Grab first song
-    for result in root.findall("sub:searchResult3", namespaces=ns):
-        #Get FIRST song result
-        for album in result.findall("sub:album", namespaces=ns):
-            #Check for empty attributes
-            album_id = ''
-            title = ''
-            artist = ''
-            coverArt = ''
-            if 'id' in album.attrib:
-                album_id = album.attrib["id"]
-            if 'name' in album.attrib:
-                title = album.attrib["name"]
-            if 'artist' in album.attrib:
-                artist = album.attrib["artist"]
-            if 'coverArt' in album.attrib:
-                coverArt = album.attrib["coverArt"]
-
-            #Create object & break
-            album = albumInfo(album_id, title, artist, coverArt)
-            break
-
-    return album
-
-#(binary) Returns request containing raw song data
-def getCoverArt(id):
-    return makeRawRequest('/rest/getCoverArt', {"id":id})
-
-
-#(songInfo) Returns an array of songInfo objects that contain song info
-def getSearchResults(query):
-    #Query song and save xml response into root
-    root = search3(query)
-
-    #Take all results from list as songInfo objects
-    songInfoList = []
-    for result in root.findall("sub:searchResult3", namespaces=ns):
-        for song in result.findall("sub:song", namespaces=ns):
-            #Check for empty attributes
-            song_id = ''
-            title = ''
-            artist = ''
-            album = ''
-            coverArt = ''
-            if 'id' in song.attrib:
-                song_id = song.attrib["id"]
-            else:
-                continue
-            if 'title' in song.attrib:
-                title = song.attrib["title"]
-            if 'artist' in song.attrib:
-                artist = song.attrib["artist"]
-            if 'album' in song.attrib:
-                album = song.attrib["album"]
-            if 'coverArt' in song.attrib:
-                coverArt = song.attrib["coverArt"]
-
-            #Create Object and Append
-            songInfoList.append(songInfo(song_id, title, artist, album, coverArt))
-
-    return songInfoList
-
-def getAlbumData(id) -> list:
+def getAlbum(id) -> list:
     """Return song data for an album
 
     Returns
     -------
     list[songInfo]: Full list of songs that are in the found album
     """
-    root = makeXMLRequest("/rest/getAlbum", {
+    root = makeXMLRequest("/rest/searchAlbum", {
         "id": id
     })
 
@@ -332,8 +251,7 @@ def getAlbumData(id) -> list:
     return songInfoList
 
 
-#(binary) Returns a listing of files in a saved playlist.
-def getPlaylistData(id:str) -> list:
+def getPlaylist(id:str) -> list:
     """Return song data for a playlist
 
     Returns
@@ -377,24 +295,6 @@ def getPlaylistData(id:str) -> list:
     return songInfoList
 
 
-#(playlistInfo) Returns list of playlist
-def getPlaylist(query) -> list:
-    """Get a single playlist
-
-    returns
-    -------
-    list[songInfo]: Song data for playlist
-    """
-    root = makeXMLRequest('/rest/getPlaylists')
-    for playlistList in root.findall("sub:playlists", namespaces=ns):
-        for playlist in playlistList.findall("sub:playlist", namespaces=ns):
-            log.debug(f"Checking {playlist.attrib['name']} vs {query}")
-            if(playlist.attrib["name"] == query):
-                log.debug(f"Found {query}")
-                return getPlaylistData(playlist.attrib['id'])
-
-    return None
-
 def getPlaylists() -> list:
     """Get all of the playlists the api has access to
 
@@ -424,3 +324,92 @@ def getPlaylists() -> list:
                 playlists.append(pl)
 
     return playlists
+
+
+#(songInfo) Returns an array of songInfo objects that contain song info
+def searchSong(query):
+    #Query song and save xml response into root
+    root = search3(query)
+
+    #Take all results from list as songInfo objects
+    songInfoList = []
+    for result in root.findall("sub:searchResult3", namespaces=ns):
+        for song in result.findall("sub:song", namespaces=ns):
+            #Check for empty attributes
+            song_id = ''
+            title = ''
+            artist = ''
+            album = ''
+            coverArt = ''
+            if 'id' in song.attrib:
+                song_id = song.attrib["id"]
+            else:
+                continue
+            if 'title' in song.attrib:
+                title = song.attrib["title"]
+            if 'artist' in song.attrib:
+                artist = song.attrib["artist"]
+            if 'album' in song.attrib:
+                album = song.attrib["album"]
+            if 'coverArt' in song.attrib:
+                coverArt = song.attrib["coverArt"]
+
+            #Create Object and Append
+            songInfoList.append(songInfo(song_id, title, artist, album, coverArt))
+
+    return songInfoList
+
+
+#(playlistInfo) Returns list of playlist
+def searchPlaylist(query) -> list:
+    """Get a single playlist
+
+    returns
+    -------
+    list[songInfo]: Song data for playlist
+    """
+    root = makeXMLRequest('/rest/getPlaylists')
+    for playlistList in root.findall("sub:playlists", namespaces=ns):
+        for playlist in playlistList.findall("sub:playlist", namespaces=ns):
+            if(playlist.attrib["name"] == query):
+                log.debug(f"Found {query}")
+                return getPlaylist(playlist.attrib['id'])
+
+    return None
+
+
+#(binary) Searches album given query and returns the album
+def searchAlbum(query):
+    #Query album & save xml response into root
+    root = search3(query)
+
+    #Create albumInfo object that will hold song information
+    album = None
+
+    #Grab first song
+    for result in root.findall("sub:searchResult3", namespaces=ns):
+        #Get FIRST song result
+        for album in result.findall("sub:album", namespaces=ns):
+            #Check for empty attributes
+            album_id = ''
+            title = ''
+            artist = ''
+            coverArt = ''
+            if 'id' in album.attrib:
+                album_id = album.attrib["id"]
+            if 'name' in album.attrib:
+                title = album.attrib["name"]
+            if 'artist' in album.attrib:
+                artist = album.attrib["artist"]
+            if 'coverArt' in album.attrib:
+                coverArt = album.attrib["coverArt"]
+
+            #Create object & break
+            album = albumInfo(album_id, title, artist, coverArt)
+            break
+
+    return album
+
+#(binary) Returns request containing raw song data
+def getCoverArt(id):
+    return makeRawRequest('/rest/getCoverArt', {"id":id})

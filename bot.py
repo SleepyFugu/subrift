@@ -224,7 +224,7 @@ async def playalbum(ctx, option: typing.Optional[int] = None, *, query):
 
     vc = client.voice_clients[0]
 
-    album = api.getAlbumData(api.getAlbum(query).id)
+    album = api.getAlbum(api.searchAlbum(query).id)
 
     if album is None:
         await ctx.send('Album Not Found. Enter Exact Name')
@@ -306,7 +306,7 @@ async def search(ctx, *, query):
     if ctx.author == client.user:
         return
 
-    songInfoList = api.getSearchResults(query)
+    songInfoList = api.searchSong(query)
 
     #Embed Message
     embed = discord.Embed(
@@ -480,7 +480,7 @@ async def playlists(ctx):
 async def playlist(ctx, option: typing.Optional[int] = None, *, query):
     """Query for a given playlist, and play it (resets the queue)
     """
-    playlist = api.getPlaylist(query)
+    playlist = api.searchPlaylist(query)
     if playlist is None or len(playlist) < 1:
         await ctx.send('Failed to locate playlist, please enter the exact name')
         return
