@@ -40,20 +40,12 @@ class Player():
 
         try:
             if data["EMBED_ON_PLAY"]:
-                embed = discord.Embed(
-                    title = 'Playing {0} by {1}'.format(song.title, song.artist),
-                    color = discord.Color.orange(),
-                    description = '[Download]({0})'.format(api.streamSong(song.id).url)
-                )
-                embed.set_author(name='SubRift')
-                embed.set_footer(text=api.url)
-                embed.set_thumbnail(url=rift_icon)
-
-                #Check cover art
+                e = PagedEmbed(f"Playing {song.title} by {song.artist}")
+                embed = discord.Embed(description=f"[Download]({api.streamSong(song.id).url})")
                 if song.coverArt != '':
                     embed.set_image(url=api.getCoverArt(song.coverArt).url)
-
-                await ctx.send(embed=embed)
+                e.add_page(embed)
+                await e.send(ctx)
         except:
             pass
 
@@ -71,10 +63,13 @@ class Player():
 # Note: Based heavily on:
 #  https://stackoverflow.com/questions/55075157/discord-rich-embed-buttons
 class PagedEmbed():
-    def __init__(self, title:str, pages:list=None):
+    def __init__(self, title:str, pages:list=None, thumbnail:str=rift_icon, author:str="Subrift"):
         self.title = title
         self.page_count = 0
         self.pages = []
+        self.thumbnail = thumbnail
+        self.author = author
+        self.color = discord.Color.dark_orange()
         if isinstance(pages, list):
             self.page_count = len(pages)
             self.pages = pages
@@ -85,22 +80,20 @@ class PagedEmbed():
         self.pages.append(embed)
 
     async def send(self, ctx, timeout:int=30):
-        if self.page_count == 1:
-            self.pages[0].title = self.title
-            self.pages[0].set_footer(text=api.url)
-            self.pages[0].set_author(name="")
-            self.pages[0].set_thumbnail(url=rift_icon)
-            return await ctx.send(embed=self.pages[0])
-
         for i in range(self.page_count):
             self.pages[i].title = f"{self.title} ({i + 1} of {self.page_count})"
+            self.pages[i].color = self.color
             self.pages[i].set_footer(text=api.url)
-            self.pages[i].set_author(name="")
-            self.pages[i].set_thumbnail(url=rift_icon)
+            self.pages[i].set_author(name=self.author)
+            self.pages[i].set_thumbnail(url=self.thumbnail)
+
+        if self.page_count == 1:
+            self.pages[0].title = self.title
+            return await ctx.send(embed=self.pages[0])
 
         first_react = '⏮'
-        prev_react = '◀'
-        next_react = '▶'
+        prev_react = '⏪'
+        next_react = '⏩'
         last_react = '⏭'
 
         message = await ctx.send(embed=self.pages[0])
@@ -143,8 +136,8 @@ class PagedEmbed():
         await message.clear_reactions()
 
 class DynamicPagedEmbed(PagedEmbed):
-    def __init__(self, title:str, pages:list=None):
-        super().__init__(title, pages)
+    def __init__(self, title:str, pages:list=None, thumbnail:str=rift_icon, author:str="Subrift"):
+        super().__init__(title, pages, thumbnail, author)
         self.reactions = []
         self.on_page = 0
         async def on_react_fn(self, ctx, message, reaction):
@@ -160,16 +153,13 @@ class DynamicPagedEmbed(PagedEmbed):
     def update_pages(self):
         for i in range(self.page_count):
             self.pages[i].title = f"{self.title} ({i + 1} of {self.page_count})"
+            self.pages[i].color = self.color
             self.pages[i].set_footer(text=api.url)
-            self.pages[i].set_author(name="")
-            self.pages[i].set_thumbnail(url=rift_icon)
+            self.pages[i].set_author(name=self.author)
+            self.pages[i].set_thumbnail(url=self.thumbnail)
 
     async def send(self, ctx, timeout:int=30):
-        for i in range(self.page_count):
-            self.pages[i].title = f"{self.title} ({i + 1} of {self.page_count})"
-            self.pages[i].set_footer(text=api.url)
-            self.pages[i].set_author(name="")
-            self.pages[i].set_thumbnail(url=rift_icon)
+        self.update_pages()
 
         message = await ctx.send(embed=self.pages[0])
         for react in self.reactions:
@@ -277,6 +267,11 @@ async def on_ready():
     log.info(f"Logged in as {client.user}")
 
 
+#########################
+## Command Definitions ##
+#########################
+
+
 @client.command()
 @commands.check(log_command)
 @commands.check(ignore_self)
@@ -324,7 +319,6 @@ async def skip(ctx):
         vc.stop()
 
 
-#Play Song Discord Command
 @client.command()
 @commands.check(require_vc)
 @commands.check(log_command)
@@ -349,6 +343,76 @@ async def play(ctx, *, query):
     await ctx.send('Added to Queue')
     await playSong(ctx, vc, song)
 
+
+@client.command()
+@commands.check(require_vc)
+@commands.check(log_command)
+@commands.check(ignore_self)
+async def add(ctx, what:str, *, query:str):
+    """Add an object to the queue
+
+    Object can be a song, playlist, or album
+    """
+
+    if query == "":
+        await ctx.send("Please provide a query")
+        return
+
+    if what not in ["song", "playlist", "album"]:
+        await ctx.send("Please provide a valid object type (song, playlist, album)")
+        return
+
+    if not client.voice_clients:
+        await (ctx.author.voice.channel).connect()
+    vc = client.voice_clients[0]
+
+    count = 0
+
+    # Just run the song command
+    if what == "song":
+        return await play(ctx, query=query)
+
+    # Playlist is kept separate as the playlist command clears the queue
+    elif what == 'playlist':
+        playlist = api.searchPlaylist(query)
+        count = len(playlist)
+
+        if playlist is None or count < 1:
+            await ctx.send('Failed to locate playlist, please enter the exact name')
+            return
+
+        # This looks gross, but accounts for Player() popping the queue stack when it starts
+        # since we need to keep that in mind, we check whether or not the queue still has
+        # more than one song present after playSong is run, and we add it to the queue if
+        # there is
+        first = playlist.pop(0)
+        printQueue.append(first)
+        await playSong(ctx, vc, first)
+
+        for entry in playlist:
+            await playSong(ctx, vc, entry)
+            printQueue.append(entry)
+
+    # Ditto.
+    elif what == 'album':
+        albums = api.searchAlbum(query, count=1)
+
+        if len(albums) < 1:
+            await ctx.send('Failed to locate album, please enter the exact name')
+            return
+
+        album = api.getAlbum(albums[0].id)
+        count = len(album)
+        first = album.pop(0)
+
+        printQueue.append(first)
+        await playSong(ctx, vc, first)
+
+        for entry in album:
+            await playSong(ctx, vc, entry)
+            printQueue.append(entry)
+
+    return await ctx.send(f"Added {count} song[s] to the queue")
 
 @client.command()
 @commands.check(require_vc)
