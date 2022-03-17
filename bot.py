@@ -1,11 +1,14 @@
+import re
 import discord
 import json
 import api
 import log
+import sys
 import util
 import asyncio
 import random
 import typing
+import traceback
 from discord.ext import commands
 
 rift_icon  = 'https://cdn.discordapp.com/avatars/699752709028446259/df9496def162ef55bcaa9a2005c75ab2.png?size=256'
@@ -48,6 +51,7 @@ class Player():
                 await e.send(ctx)
         except:
             pass
+
 
         printQueue.pop(0)
         global currently_playing
@@ -204,7 +208,7 @@ async def require_playing(ctx: discord.ext.commands.Context):
 
 async def require_vc(ctx: discord.ext.commands.Context):
     if ctx is None:
-        logError("invalid context received")
+        log.error("invalid context received")
         return False
 
     if ctx.author.voice is None:
@@ -216,7 +220,7 @@ async def require_vc(ctx: discord.ext.commands.Context):
 
 async def require_queue(ctx: discord.ext.commands.Context):
     if ctx is None:
-        await logError("invalid context received")
+        await log.error("invalid context received")
         return False
 
     #Check Queue is not empty
@@ -273,6 +277,48 @@ async def on_ready():
 
 
 @client.command()
+@commands.is_owner()
+async def toggleDebug(ctx):
+    if log.debugEnabled():
+        log.disableDebug()
+        await ctx.send("Disabled debug logging")
+        return
+    log.enableDebug()
+    await ctx.send("Enabled debug logging")
+
+
+param_re = re.compile('^(?P<key>[a-zA-Z0-9]+?)=(?P<value>[^=]+?)$')
+@client.command()
+@commands.is_owner()
+async def requestXML(ctx, endpoint, *, parameters_str=None):
+    log.debug(f"Got endpoint: {endpoint}")
+    log.debug(f"Got params: {parameters_str}")
+
+    params = {}
+    if isinstance(parameters_str, str):
+        for p in parameters_str.split(" "):
+            log.debug(f"Checking param str: {p}")
+            m = param_re.match(p)
+            if m is None:
+                continue
+
+            params[m.group('key')] = m.group('value')
+
+    r = api.makeRawRequest(endpoint, params=params)
+    pager = PagedEmbed("XML Response", thumbnail='')
+    embed = discord.Embed()
+
+    if r == None:
+        embed.description = "Request failed, 'None' recieved"
+        pager.add_page(embed)
+        return await pager.send(ctx)
+
+    embed.description = f"```xml\n{r.text}```"
+    pager.add_page(embed)
+    await pager.send(ctx)
+
+
+@client.command()
 @commands.check(log_command)
 @commands.check(ignore_self)
 async def ping(ctx):
@@ -282,17 +328,6 @@ async def ping(ctx):
         await ctx.channel.send("Pong~! Subsonic server is up!")
         return
     await ctx.channel.send("Pong~! Subsonic server is down :(")
-
-
-@client.command()
-@commands.is_owner()
-async def toggleDebug(ctx):
-    if log.debugEnabled():
-        log.disableDebug()
-        await ctx.send("Disabled debug logging")
-        return
-    log.enableDebug()
-    await ctx.send("Enabled debug logging")
 
 
 @client.command()
@@ -564,7 +599,7 @@ async def search(ctx, *, query):
             if not client.voice_clients:
                 try:
                     await (ctx.author.voice.channel).connect()
-                except AttributeError as e:
+                except AttributeError:
                     await ctx.send("You need to be in voice to do that")
                     return
             vc = client.voice_clients[0]
@@ -598,6 +633,7 @@ async def search(ctx, *, query):
     dynamic.add_page(embed)
 
     await dynamic.send(ctx, timeout=60)
+
 
 @client.command()
 @commands.check(require_vc)
@@ -708,8 +744,7 @@ async def playlist(ctx, option: typing.Optional[int] = None, *, query):
     """
     playlist = api.searchPlaylist(query)
     if playlist is None or len(playlist) < 1:
-        await ctx.send('Failed to locate playlist, please enter the exact name')
-        return
+        return await ctx.send('Failed to locate playlist, please enter the exact name')
 
     if not client.voice_clients:
         await (ctx.author.voice.channel).connect()
@@ -749,6 +784,15 @@ async def shuffle(ctx):
 ####################
 ## Command Errors ##
 ####################
+@client.event
+async def on_command_error(ctx:discord.ext.commands.Context, error):
+    if isinstance(error, commands.errors.CheckFailure):
+        log.info(f"{ctx.author.name} failed to run {ctx.command.name}")
+        pass
+    else:
+        print('Ignoring exception in command {}:'.format(ctx.command), file=sys.stderr)
+        traceback.print_exception(type(error), error, error.__traceback__, file=sys.stderr)
+
 @play.error
 async def play_error(ctx, error):
     if isinstance(error, commands.MissingRequiredArgument):
