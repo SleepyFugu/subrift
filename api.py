@@ -26,19 +26,57 @@ ns = {'sub' : 'http://subsonic.org/restapi'}
 
 #Classes
 class songInfo:
-    def __init__(self, id, title, artist, album, coverArt):
-        self.id = id
-        self.title = title
-        self.artist = artist
-        self.album = album
-        self.coverArt = coverArt
+    def __init__(self, id='', title='', artist='', album='', coverArt='', path='', element=None):
+        if not isinstance(element, ET.Element):
+            self.id = id
+            self.path = path
+            self.title = title
+            self.artist = artist
+            self.album = album
+            self.coverArt = coverArt
+            return
+
+        if element.tag != f"{{{ns['sub']}}}song":
+            raise TypeError
+
+        for a in ['id', 'title', 'artist', 'album', 'coverArt', 'path']:
+            try:
+                _ = element.attrib[a]
+            except KeyError:
+                element.attrib[a] = ''
+
+        self.id = element.attrib['id']
+        self.path = element.attrib['path']
+        self.title = element.attrib['title']
+        self.artist = element.attrib['artist']
+        self.album = element.attrib['album']
+        self.coverArt = element.attrib['coverArt']
+
 
 class albumInfo:
-    def __init__(self, id, title, artist, coverArt):
-        self.id = id
-        self.title = title
-        self.artist = artist
-        self.coverArt = coverArt
+    def __init__(self, id='', title='', artist='', coverArt='', element=''):
+        if not isinstance(element, ET.Element):
+            self.id = id
+            self.title = title
+            self.artist = artist
+            self.coverArt = coverArt
+            return
+
+        if element.tag != f"{{{ns['sub']}}}album":
+            log.error(f"Got bad tag: {element.tag}")
+            raise TypeError
+
+        for a in ['id', 'name', 'artist', 'coverArt']:
+            try:
+                _ = element.attrib[a]
+            except KeyError:
+                element.attrib[a] = ''
+
+        self.id = element.attrib['id']
+        self.title = element.attrib['name']
+        self.artist = element.attrib['artist']
+        self.coverArt = element.attrib['coverArt']
+
 
 class artistInfo:
     def __init__(self, id, name):
@@ -52,6 +90,7 @@ class playlistInfo:
         self.count = count
         self.owner = owner
         self.comment = comment
+
 class searchResults:
     def __init__(self, results:ET.Element, form:int=3):
         if form != 1:
@@ -67,36 +106,13 @@ class searchResults:
         if isinstance(results, ET.Element):
             for result in results.findall(f"sub:{searchForm}", namespaces=ns):
                 for song in result.findall('sub:song', namespaces=ns):
-                    for a in ['id', 'title', 'artist', 'album', 'coverArt']:
-                        try:
-                            _ = song.attrib[a]
-                        except KeyError:
-                            song.attrib[a] = ''
-
-                    self.songs.append(songInfo(
-                        id = song.attrib['id'],
-                        title = song.attrib['title'],
-                        artist = song.attrib['artist'],
-                        album = song.attrib['album'],
-                        coverArt = song.attrib['coverArt']
-                    ))
+                    self.songs.append(songInfo(element=song))
 
                 for album in result.findall('sub:album', namespaces=ns):
-                    for a in ['id', 'name', 'artist', 'coverArt']:
-                        try:
-                            _ = album.attrib[a]
-                        except KeyError:
-                            album.attrib[a] = ''
-
-                    self.albums.append(albumInfo(
-                        id = album.attrib['id'],
-                        title = album.attrib['name'],
-                        artist = album.attrib['artist'],
-                        coverArt = album.attrib['coverArt']
-                    ))
+                    self.albums.append(albumInfo(element=album))
 
                 for artist in result.findall('sub:artist', namespaces=ns):
-                    self.artists.append(albumInfo(
+                    self.artists.append(artistInfo(
                         id = artist.attrib['id'],
                         name = artist.attrib['name'],
                     ))
@@ -279,13 +295,7 @@ def getSong(id:str) -> songInfo:
     if song is None:
         return None
 
-    return songInfo(
-        id = song.attrib['id'],
-        title = song.attrib['title'],
-        album = song.attrib['album'],
-        artist = song.attrib['artist'],
-        coverArt = song.attrib['coverArt']
-    )
+    return songInfo(element=song)
 
 
 def getAlbum(id) -> list:
@@ -306,13 +316,7 @@ def getAlbum(id) -> list:
     songInfoList = []
     for album in element.findall("sub:album", namespaces=ns):
         for entry in album.findall("sub:song", namespaces=ns):
-            songInfoList.append(songInfo(
-                id = entry.attrib["id"],
-                title = entry.attrib["title"],
-                artist = entry.attrib["artist"],
-                album = entry.attrib["album"],
-                coverArt = entry.attrib["coverArt"])
-            )
+            songInfoList.append(songInfo(element=entry))
 
     return songInfoList
 
@@ -335,13 +339,7 @@ def getPlaylist(id:str) -> list:
     songInfoList = []
     for playlist in element.findall("sub:playlist", namespaces=ns):
         for entry in playlist.findall("sub:entry", namespaces=ns):
-            songInfoList.append(songInfo(
-                id = entry.attrib["id"],
-                title = entry.attrib["title"],
-                artist = entry.attrib["artist"],
-                album = entry.attrib["album"],
-                coverArt = entry.attrib["coverArt"])
-            )
+            songInfoList.append(songInfo(element=entry))
 
     return songInfoList
 
@@ -416,7 +414,7 @@ def searchSong(query, offset:int=0, count:int=20) -> list:
 
 
 def searchAlbum(query, offset:int=0, count:int=20) -> list:
-    """Perform a search3 with songs and artists suppressed, and return the songs found
+    """Perform a search3 with songs and artists suppressed, and return the albums found
 
     Supports passing an offset for paging
     """
@@ -429,7 +427,7 @@ def searchAlbum(query, offset:int=0, count:int=20) -> list:
 
 
 def searchArtist(query, offset:int=0, count:int=20) -> list:
-    """Perform a search3 with songs and albums suppressed, and return the songs found
+    """Perform a search3 with songs and albums suppressed, and return the artists found
 
     Supports passing an offset for paging
     """
