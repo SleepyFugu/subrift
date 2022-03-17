@@ -502,8 +502,8 @@ async def resume(ctx):
 @client.command()
 @commands.check(log_command)
 @commands.check(ignore_self)
-async def searchSong(ctx, *, query):
-    """Test bot with a ping
+async def search(ctx, *, query):
+    """Search for a given song
     """
     description = "🔎: _Add more search results_\n✅: _Add all results so far to the queue_"
     songs_found = 0
