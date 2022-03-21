@@ -36,7 +36,7 @@ class songInfo:
             self.coverArt = coverArt
             return
 
-        if element.tag != f"{{{ns['sub']}}}song":
+        if element.tag != f"{{{ns['sub']}}}music":
             raise TypeError
 
         for a in ['id', 'title', 'artist', 'album', 'coverArt', 'path']:
