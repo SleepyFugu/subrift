@@ -36,8 +36,12 @@ class songInfo:
             self.coverArt = coverArt
             return
 
-        if element.tag != f"{{{ns['sub']}}}song":
-            print(f"Got element tag: {element.tag}")
+        try:
+            if element.attrib['type'] != "music":
+                print(f"Got element type: {element.attrib['type']}")
+                raise TypeError
+        except KeyError:
+            print("Bad XML element (no type attribute)")
             raise TypeError
 
         for a in ['id', 'title', 'artist', 'album', 'coverArt', 'path']:
