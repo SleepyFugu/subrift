@@ -38,11 +38,10 @@ class songInfo:
 
         try:
             if element.attrib['type'] != "music":
-                print(f"Got element type: {element.attrib['type']}")
-                raise TypeError
+                raise TypeError(f"Got element type: {element.attrib['type']}")
+
         except KeyError:
-            print("Bad XML element (no type attribute)")
-            raise TypeError
+            raise TypeError("Bad XML element: missing type attribute")
 
         for a in ['id', 'title', 'artist', 'album', 'coverArt', 'path']:
             try:
@@ -425,7 +424,7 @@ def updatePlaylist(id:str, name:str, comment:str, addSongIds:list, rmSongIds:lis
         raise ValueError("id cannot be empty")
 
     params = {
-        id: id
+        "id": id
     }
 
     if isinstance(name, str) and name != '':
@@ -464,7 +463,7 @@ def deletePlaylist(id:str) -> bool:
     if id == '':
         raise ValueError("id cannot be empty")
 
-    if makeXMLRequest('/rest/deletePlaylist', { id: id }):
+    if makeXMLRequest('/rest/deletePlaylist', { "id": id }):
         return True
 
     return False
@@ -474,7 +473,7 @@ def deletePlaylist(id:str) -> bool:
 # Api Methods: Media Retrieval #
 ################################
 
-def getCoverArt(id):
+def getCoverArt(id:str):
     """Performs a raw request for a cover image using an ID
     """
     return makeRawRequest('/rest/getCoverArt', {"id":id})
@@ -483,23 +482,6 @@ def getCoverArt(id):
 ###################
 # Utility Methods #
 ###################
-
-def streamSong(id):
-    """ Returns the raw transcoded stream from a subsonic server for playback
-    """
-    return makeRawRequest("/rest/stream", stream=True, params={
-        "id": id
-    })
-
-
-def getSongFromName(query) -> songInfo:
-    """Returns the first song in a search given a name (or None)
-    """
-    songs = searchSong(query, count=1)
-    if len(songs) < 1:
-        return None
-    return songs[0]
-
 
 def searchPlaylist(query) -> list:
     """Get a single playlist
@@ -555,3 +537,45 @@ def searchArtist(query, offset:int=0, count:int=20) -> list:
         "artistCount": count,
         "artistOffset": str(offset),
     }).artists
+
+
+def streamSong(id):
+    """Returns the raw transcoded stream from a subsonic server for playback
+    """
+    return makeRawRequest("/rest/stream", stream=True, params={
+        "id": id
+    })
+
+
+def getSongFromName(query) -> songInfo:
+    """Returns the first song in a search given a name (or None)
+    """
+    songs = searchSong(query, count=1)
+    if len(songs) < 1:
+        return None
+    return songs[0]
+
+
+def getSongsByArtist(id) -> list:
+    """Returns every song by a particular artist
+    """
+    if not isinstance(id, str):
+        raise TypeError("id must be a string")
+
+    if id == "":
+        raise ValueError("id string cannot be empty")
+
+    element, = makeXMLRequest("/rest/getArtist", { "id": id })
+    if element is None:
+        return None
+
+    all_songs = []
+
+    for artist in element.findall("sub:artist", namespaces=ns):
+        for album in artist.findall("sub:album", namespaces=ns):
+            songs = getAlbum(album.attrib['id'])
+            if songs is None or len(songs) < 1:
+                continue
+            all_songs.extend(songs)
+
+    return all_songs
