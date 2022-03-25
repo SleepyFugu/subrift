@@ -97,6 +97,11 @@ class playlistInfo:
         self.comment = comment
 
 class searchResults:
+    """Describe the results of a search query
+
+
+
+    """
     def __init__(self, results:ET.Element, form:int=3):
         if form != 1:
             searchForm = f"searchResult{form}"
@@ -105,8 +110,13 @@ class searchResults:
 
 
         self.songs = []
+        """List of returned songInfi objects"""
+
         self.albums = []
+        """List of returned albumInfo objects"""
+
         self.artists = []
+        """List of returned artistInfo objects"""
 
         if isinstance(results, ET.Element):
             for result in results.findall(f"sub:{searchForm}", namespaces=ns):
@@ -208,6 +218,10 @@ def makeRawRequest(endpoint:str, params=None, stream=False) -> requests.Response
     return r
 
 
+#######################
+# Api Methods: System #
+#######################
+
 def pingServer():
     """Return the current online status of the Subsonic server
 
@@ -231,15 +245,19 @@ def getLicense() -> bool:
     return distutils.util.strtobool(root[0].attrib['valid'])
 
 
-#(xml) Returns xml object containing indexes
+#########################
+# Api Methods: Browsing #
+#########################
+
 def getIndexes():
+    """Returns all artists in an index
+    """
     return makeXMLRequest('/rest/getIndexes')
 
 
-#(xml) Returns xml object containing music folders
 # TODO: Create a musicfolders class and refactor this function
 def getMusicFolders() -> ET.Element:
-    """
+    """Returns all configured top-level music folders.
     """
     return makeXMLRequest('/rest/getMusic/Folders')
 
@@ -248,41 +266,6 @@ def getMusicDirectory(id):
     """Returns xml object containing music directory when given id
     """
     return makeXMLRequest('/rest/getMusicDirectory', {"id": id})
-
-
-def search2(query, params:dict={}) -> searchResults:
-    """Run a subsonic search2 query
-
-    Returns
-    -------
-    Element: Query returns
-    """
-    params["query"] = query
-    return searchResults(form=2, results=makeXMLRequest('/rest/search2', params))
-
-
-def search3(query, params:dict={}) -> searchResults:
-    """Run a subsonic search3 query
-
-    Returns
-    -------
-    Element: Query returns
-    """
-    params["query"] = query
-    return searchResults(form=3, results=makeXMLRequest('/rest/search3', params))
-
-#(binary) Returns request containing song data
-def streamSong(id):
-    return makeRawRequest("/rest/stream", stream=True, params={
-        "id": id
-    })
-
-#(binary) Searches song given query and returns the song data
-def getSongFromName(query) -> songInfo:
-    songs = searchSong(query, count=1)
-    if len(songs) < 1:
-        return None
-    return songs[0]
 
 
 def getSong(id:str) -> songInfo:
@@ -325,6 +308,36 @@ def getAlbum(id) -> list:
 
     return songInfoList
 
+
+##########################
+# Api Methods: Searching #
+##########################
+
+def search2(query, params:dict={}) -> searchResults:
+    """Run a subsonic search2 query (sort by path)
+
+    Returns
+    -------
+    Element: Query returns
+    """
+    params["query"] = query
+    return searchResults(form=2, results=makeXMLRequest('/rest/search2', params))
+
+
+def search3(query, params:dict={}) -> searchResults:
+    """Run a subsonic search3 query (sort by ID3)
+
+    Returns
+    -------
+    Element: Query returns
+    """
+    params["query"] = query
+    return searchResults(form=3, results=makeXMLRequest('/rest/search3', params))
+
+
+##########################
+# Api Methods: Playlists #
+##########################
 
 def getPlaylist(id:str) -> list:
     """Return song data for a playlist
@@ -380,12 +393,34 @@ def getPlaylists() -> list:
     return playlists
 
 
-#(binary) Returns request containing raw song data
+################################
+# Api Methods: Media Retrieval #
+################################
+
 def getCoverArt(id):
     """Performs a raw request for a cover image using an ID
     """
     return makeRawRequest('/rest/getCoverArt', {"id":id})
 
+
+###################
+# Utility Methods #
+###################
+
+def streamSong(id):
+    """ Returns the raw transcoded stream from a subsonic server for playback
+    """
+    return makeRawRequest("/rest/stream", stream=True, params={
+        "id": id
+    })
+
+def getSongFromName(query) -> songInfo:
+    """Returns the first song in a search given a name (or None)
+    """
+    songs = searchSong(query, count=1)
+    if len(songs) < 1:
+        return None
+    return songs[0]
 
 #(playlistInfo) Returns list of playlist
 def searchPlaylist(query) -> list:
