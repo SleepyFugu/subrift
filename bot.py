@@ -1,3 +1,4 @@
+from asyncio import tasks
 import re
 import discord
 import json
@@ -13,9 +14,11 @@ from discord.ext import commands
 
 rift_icon  = 'https://cdn.discordapp.com/avatars/699752709028446259/df9496def162ef55bcaa9a2005c75ab2.png?size=256'
 songs      = asyncio.Queue()
+tasks      = []
 playNext   = asyncio.Event()
 printQueue = []
 currently_playing = None
+param_re = re.compile('^(?P<key>[a-zA-Z0-9]+?)=(?P<value>[^=]+?)$')
 
 #Retrieve data from json file
 with open("subrift.json", "r") as read_file:
@@ -24,8 +27,8 @@ with open("subrift.json", "r") as read_file:
 #Classes
 class Player():
     def __init__(self, ctx, vc, song):
-        self.ctx = ctx
         self.vc = vc
+        self.ctx = ctx
         self.song = song
 
     #Start Song
@@ -197,6 +200,19 @@ def clearQueue(queue=None):
     for _ in range(songs.qsize()):
         songs.get_nowait()
         songs.task_done()
+    tasks.clear()
+
+
+def removeFromQueue(position:int):
+    for i in range(len(tasks())):
+        if i ==  position + 1:
+            task = tasks.pop(i)
+
+
+def plural(n:int) -> str:
+    if n != 1:
+        return 's'
+    return ''
 
 
 async def require_playing(ctx: discord.ext.commands.Context):
@@ -287,7 +303,6 @@ async def toggleDebug(ctx):
     await ctx.send("Enabled debug logging")
 
 
-param_re = re.compile('^(?P<key>[a-zA-Z0-9]+?)=(?P<value>[^=]+?)$')
 @client.command()
 @commands.is_owner()
 async def requestXML(ctx, endpoint, *, parameters_str=None):
@@ -393,8 +408,9 @@ async def add(ctx, what:str, *, query:str):
         await ctx.send("Please provide a query")
         return
 
-    if what not in ["song", "playlist", "album"]:
-        await ctx.send("Please provide a valid object type (song, playlist, album)")
+    if what not in ["song", "playlist", "album", "artist"]:
+        query = f"{what} {query}"
+        what = "song"
         return
 
     if not client.voice_clients:
@@ -404,7 +420,7 @@ async def add(ctx, what:str, *, query:str):
     count = 0
 
     # Just run the song command
-    if what == "song":
+    if what == "song" or what == "":
         return await play(ctx, query=query)
 
     # Playlist is kept separate as the playlist command clears the queue
@@ -447,7 +463,63 @@ async def add(ctx, what:str, *, query:str):
             await playSong(ctx, vc, entry)
             printQueue.append(entry)
 
-    return await ctx.send(f"Added {count} song[s] to the queue")
+    elif what == "artist":
+        artists = api.searchArtist(query, count=1)
+
+        if len(artists) < 1:
+            await ctx.send('Failed to locate artist, please enter the exact name')
+            return
+
+        songs = api.getSongsByArtist(artists[0].id)
+        count = len(songs)
+        first = songs.pop(0)
+
+        printQueue.append(first)
+        await playSong(ctx, vc, entry)
+
+        for entry in songs:
+            await playSong(ctx, vc, entry)
+            printQueue.append(entry)
+
+    return await ctx.send(f"Added {count} song{plural(count)} to the queue")
+
+
+@client.command()
+@commands.check(require_vc)
+@commands.check(require_queue)
+@commands.check(log_command)
+@commands.check(ignore_self)
+async def remove(ctx, *, query):
+    if isinstance(query, str):
+        try:
+            query = int(query)
+        except ValueError:
+            # If we can't int(), then we're attempting to clear based on a string
+            pass
+
+    if isinstance(query, int):
+        query = util.constrain(query - 1, 1, len(tasks))
+        if query > len(tasks):
+            ctx.send("Requested position is larger than the queue size")
+            return
+
+        song = removeFromQueue(query)
+        if song is not None:
+            ctx.send(f"Removed {song.name} from the queue")
+            return
+
+        ctx.send(f"Could not remove song from queue at position {query}")
+        return
+
+    if isinstance(query, str):
+        ctx.send("String / Regex based removal is not yet implemented")
+        return
+
+    # Undefined. Need to determine what to do with incorrect types. This should only
+    # ever be a string.
+    ctx.send("Undefined branch reached")
+    raise(TypeError)
+
 
 @client.command()
 @commands.check(require_vc)
@@ -739,32 +811,63 @@ async def playlists(ctx):
 @client.command()
 @commands.check(require_vc)
 @commands.check(ignore_self)
-async def playlist(ctx, option: typing.Optional[int] = None, *, query):
-    """Query for a given playlist, and play it (resets the queue)
+async def playlist(ctx, option:str, *, query):
+    """Provides access to various subcommands related to playlists
     """
-    playlist = api.searchPlaylist(query)
-    if playlist is None or len(playlist) < 1:
-        return await ctx.send('Failed to locate playlist, please enter the exact name')
 
-    if not client.voice_clients:
-        await (ctx.author.voice.channel).connect()
+    if not isinstance(option, str):
+        raise TypeError("playlist must be passed an argument")
 
-    vc = client.voice_clients[0]
-    if vc.is_playing() == True:
-        vc.stop()
+    if option == '':
+        raise ValueError("playlist must be passed an argument")
 
-    clearQueue(printQueue)
+    if option == 'play':
+        playlist = api.searchPlaylist(query)
+        if playlist is None or len(playlist) < 1:
+            return await ctx.send('Failed to locate playlist, please enter the exact name')
 
-    #Shuffle if -s Given
-    # TODO: This doesn't seem to be working, will need to look into why
-    if option == 1:
-        random.shuffle(playlist)
+        if not client.voice_clients:
+            await (ctx.author.voice.channel).connect()
 
-    await playSong(ctx, vc, playlist.pop(0))
+        vc = client.voice_clients[0]
+        if vc.is_playing() == True:
+            vc.stop()
 
-    for entry in playlist:
-        await playSong(ctx, vc, entry)
-        printQueue.append(entry)
+        clearQueue(printQueue)
+
+        #Shuffle if -s Given
+        # TODO: This doesn't seem to be working, will need to look into why
+        if option == 1:
+            random.shuffle(playlist)
+
+        await playSong(ctx, vc, playlist.pop(0))
+
+        for entry in playlist:
+            await playSong(ctx, vc, entry)
+            printQueue.append(entry)
+
+    if option == 'enqueue':
+        playlist = api.searchPlaylist(query)
+        count = len(playlist)
+
+        if playlist is None or count < 1:
+            await ctx.send('Failed to locate playlist, please enter the exact name')
+            return
+
+        # This looks gross, but accounts for Player() popping the queue stack when it starts
+        # since we need to keep that in mind, we check whether or not the queue still has
+        # more than one song present after playSong is run, and we add it to the queue if
+        # there is
+        first = playlist.pop(0)
+        printQueue.append(first)
+        await playSong(ctx, vc, first)
+
+    # TODO: Implement playlist command argument processor
+    if option == 'create':
+        re.compile("^$")
+    if option == 'delete':
+    if option == 'addSong':
+    if option == 'delSong':
 
 
 @client.command()
