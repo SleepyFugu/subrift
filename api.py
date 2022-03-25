@@ -393,6 +393,83 @@ def getPlaylists() -> list:
     return playlists
 
 
+def createPlaylist(name:str, songIds:list) -> bool:
+    """Creates a playlist with the given name and songs on the host
+    """
+    if name == '':
+        raise ValueError("name must not be empty")
+
+    params = {
+        name: name
+    }
+
+    if isinstance(songIds, list) and len(songIds) > 0:
+        params['songId'] = []
+        for id in songIds:
+            if not isinstance(id, str):
+                raise TypeError('songIds must contain only strings')
+            if id == '':
+                raise ValueError('songIds must not be empty strings')
+            params['songId'].append(id)
+
+    if makeXMLRequest('/rest/createPlaylist', params):
+        return True
+
+    return False
+
+
+def updatePlaylist(id:str, name:str, comment:str, addSongIds:list, rmSongIds:list) -> bool:
+    """Update a playlist on the host with the given data
+    """
+    if id == '':
+        raise ValueError("id cannot be empty")
+
+    params = {
+        id: id
+    }
+
+    if isinstance(name, str) and name != '':
+        params['name'] = name
+
+    if isinstance(comment, str):
+        params['comment'] = comment
+
+    if isinstance(addSongIds, list) and len(addSongIds) > 0:
+        params['songIdToAdd'] = []
+        for id in songIds:
+            if not isinstance(id, str):
+                raise TypeError('addSongIds must contain only strings')
+            if id == '':
+                raise ValueError('addSongIds must not be empty strings')
+            params['songIdToAdd'].append(id)
+
+    if isinstance(rmSongIds, list) and len(rmSongIds) > 0:
+        params['songIdToRemove'] = []
+        for id in songIds:
+            if not isinstance(id, str):
+                raise TypeError('rmSongIds must contain only strings')
+            if id == '':
+                raise ValueError('rmSongIds must not be empty strings')
+            params['songIdToRemove'].append(id)
+
+    if makeXMLRequest('/rest/updatePlaylist', params):
+        return True
+
+    return False
+
+
+def deletePlaylist(id:str) -> bool:
+    """Deletes a playlist from the host
+    """
+    if id == '':
+        raise ValueError("id cannot be empty")
+
+    if makeXMLRequest('/rest/deletePlaylist', { id: id }):
+        return True
+
+    return False
+
+
 ################################
 # Api Methods: Media Retrieval #
 ################################
