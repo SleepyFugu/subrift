@@ -414,6 +414,7 @@ def streamSong(id):
         "id": id
     })
 
+
 def getSongFromName(query) -> songInfo:
     """Returns the first song in a search given a name (or None)
     """
@@ -422,7 +423,7 @@ def getSongFromName(query) -> songInfo:
         return None
     return songs[0]
 
-#(playlistInfo) Returns list of playlist
+
 def searchPlaylist(query) -> list:
     """Get a single playlist
 
